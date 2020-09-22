@@ -12,3 +12,18 @@ __copyright__ = 'Copyright 2020 Binjie Feng'
 def find_serial_port_list():
     return sorted(serial.tools.list_ports.comports())
 
+def main():
+    parser = argparse.ArgumentParser(description=f'TempSampling {__version__} - TUXIHUOZAIGONGCHENG', prog='TempSampling')
+
+    parser.add_argument('--ports',
+                        help='show serial ports list',
+                        default=True)
+
+    args = parser.parse_args()
+    if args.ports:
+        print(find_serial_port_list())
+    else:
+        print('there is no port')
+
+if __name__ == '__main__':
+    main()
