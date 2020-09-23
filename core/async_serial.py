@@ -22,7 +22,7 @@ def detect_serial_port():
 def find_serial_port_list():
     return sorted(serial.tools.list_ports.comports())
 
-class Com:
+class _Com:
     def __init__(self, url, baudrate):
         if url in find_serial_port_list():
             self.com = serial.Serial()
@@ -33,6 +33,13 @@ class Com:
         self.noFeedBackCount = 0
         self.feedBackCount = 0
         self.sendCount = 0
+        self.protocol = None
+
+    def get_protocol(self):
+        return self.protocol
+
+    def set_protocal(self, protocal):
+        self.protocol = protocal
 
     def get_noFeedBackCount(self):
         return self.sendCount - self.feedBackCount
@@ -44,14 +51,15 @@ class Com:
         return self.sendCount
 
     def receive_data(self):
-        try:
-            length = max(1, min(2048, self.com.in_waiting))
-            bytes = self.com.read(length)
-        except Exception as why:
-            raise why
-        else:
-            self.feedBackCount += 1
-            return bytes
+        while not self.receiveProgressStop:
+            try:
+                length = max(1, min(2048, self.com.in_waiting))
+                bytes = self.com.read(length)
+            except Exception as why:
+                raise why
+            else:
+                self.feedBackCount += 1
+                return bytes
 
     def send_data(self, data):
         if self.com.is_open and data != -1:
@@ -70,7 +78,6 @@ class Com:
                 self.com.close()
             except Exception as why:
                 raise why
-
 
 
 
