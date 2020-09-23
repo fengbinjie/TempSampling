@@ -9,8 +9,61 @@ __author__ = 'Binjie Feng'
 __license__ = 'ISC'
 __copyright__ = 'Copyright 2020 Binjie Feng'
 
+
+def detect_serial_port():
+    port_list = find_serial_port_list()
+    if port_list:
+        for port in port_list:
+            # TODO:输出格式化
+            pass
+    return port_list
+
+
 def find_serial_port_list():
     return sorted(serial.tools.list_ports.comports())
+
+class Com:
+    def __init__(self, url, baudrate):
+        if url in find_serial_port_list():
+            self.com = serial.Serial()
+        else:
+            raise Exception("there is no such port")
+        self.receiveProgressStop = False
+        self.sendProgressStop = False
+        self.timeLastReceive = 0
+        self.noFeedBackCount = 0
+        self.feedBackCount = 0
+        self.sendCount = 0
+
+    def recevive_data(self):
+        try:
+            length = max(1, min(2048, self.com.in_waiting))
+            bytes = self.com.read(length)
+        except Exception as why:
+            raise why
+        else:
+            self.feedBackCount += 1
+            return bytes
+
+    def send_data(self, data):
+        if self.com.is_open and data != -1:
+            return
+        try:
+                self.com.write(data)
+        except Exception as why:
+            raise why
+        else:
+            self.sendCount += 1
+
+    def close(self):
+        self.receiveProgressStop = True
+        if self.com.is_open:
+            try:
+                self.com.close()
+            except Exception as why:
+                raise why
+
+
 
 def main():
     parser = argparse.ArgumentParser(description=f'TempSampling {__version__} - TUXIHUOZAIGONGCHENG', prog='TempSampling')
