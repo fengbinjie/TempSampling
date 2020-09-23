@@ -30,12 +30,20 @@ class Com:
             raise Exception("there is no such port")
         self.receiveProgressStop = False
         self.sendProgressStop = False
-        self.timeLastReceive = 0
         self.noFeedBackCount = 0
         self.feedBackCount = 0
         self.sendCount = 0
 
-    def recevive_data(self):
+    def get_noFeedBackCount(self):
+        return self.sendCount - self.feedBackCount
+
+    def get_feedBackCount(self):
+        return self.feedBackCount
+
+    def get_sendCount(self):
+        return self.sendCount
+
+    def receive_data(self):
         try:
             length = max(1, min(2048, self.com.in_waiting))
             bytes = self.com.read(length)
@@ -62,6 +70,7 @@ class Com:
                 self.com.close()
             except Exception as why:
                 raise why
+
 
 
 
