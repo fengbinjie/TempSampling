@@ -1,6 +1,7 @@
 import serial
 import serial.tools.list_ports
 import argparse
+import json
 
 __title__ = 'tempsampling'
 __version__ = '0.1.0'
@@ -22,6 +23,14 @@ def detect_serial_port():
 def find_serial_port_list():
     return sorted(serial.tools.list_ports.comports())
 
+def open_protocol_file():
+    with open("protocol.json", 'r') as p:
+        try:
+            protocol_dict = json.dumps(p)
+        except json.JSONDecodeError as why:
+            raise why
+    return protocol_dict
+
 class _Com:
     def __init__(self, url, baudrate):
         if url in find_serial_port_list():
@@ -33,13 +42,13 @@ class _Com:
         self.noFeedBackCount = 0
         self.feedBackCount = 0
         self.sendCount = 0
-        self.protocol = None
+        self.protocol = open_protocol_file()
 
     def get_protocol(self):
-        return self.protocol
-
-    def set_protocal(self, protocal):
-        self.protocol = protocal
+        if self.protocol:
+            return self.protocol
+        else:
+            raise Exception("there is no protocol")
 
     def get_noFeedBackCount(self):
         return self.sendCount - self.feedBackCount
@@ -50,10 +59,19 @@ class _Com:
     def get_sendCount(self):
         return self.sendCount
 
-    def receive_data(self):
+    def receive_data_with_protocol(self):
+        if self.protocol:
+            current_position = 0x00
+            saved_data = bytearray()
+
+
+        else:
+            raise Exception("there is no protocol")
+
+    def receive_data(self, length_set=1):
         while not self.receiveProgressStop:
+            length = length_set if length_set else max(1, min(2048, self.com.in_waiting))
             try:
-                length = max(1, min(2048, self.com.in_waiting))
                 bytes = self.com.read(length)
             except Exception as why:
                 raise why
