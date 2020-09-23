@@ -15,15 +15,19 @@ def find_serial_port_list():
 def main():
     parser = argparse.ArgumentParser(description=f'TempSampling {__version__} - TUXIHUOZAIGONGCHENG', prog='TempSampling')
 
-    parser.add_argument('--ports',
+    parser.add_argument('-p',
+                        '--ports',
                         help='show serial ports list',
-                        default=True)
+                        dest='ports',
+                        action='store_true'
+                        )
 
     args = parser.parse_args()
     if args.ports:
-        print(find_serial_port_list())
-    else:
-        print('there is no port')
+        ports = find_serial_port_list()
+        print(ports if ports else "there is no ports")
+        return
+
 
 if __name__ == '__main__':
     main()
