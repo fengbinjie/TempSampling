@@ -10,6 +10,7 @@ __author__ = 'Binjie Feng'
 __license__ = 'ISC'
 __copyright__ = 'Copyright 2020 Binjie Feng'
 
+PROTOCOL = None
 
 def detect_serial_port():
     port_list = find_serial_port_list()
@@ -23,6 +24,7 @@ def detect_serial_port():
 def find_serial_port_list():
     return sorted(serial.tools.list_ports.comports())
 
+
 def open_protocol_file():
     with open("protocol.json", 'r') as p:
         try:
@@ -31,24 +33,33 @@ def open_protocol_file():
             raise why
     return protocol_dict
 
+def receive_data_with_protocol(self):
+    if self.protocol:
+        current_position = 0x00
+        saved_data = bytearray()
+
+
+    else:
+        raise Exception("there is no protocol")
+
+def get_protocol(self):
+    if self.protocol:
+        return self.protocol
+    else:
+        raise Exception("there is no protocol")
+
 class _Com:
     def __init__(self, url, baudrate):
         if url in find_serial_port_list():
             self.com = serial.Serial()
         else:
-            raise Exception("there is no such port")
+            raise Exception("there is no such a port")
         self.receiveProgressStop = False
         self.sendProgressStop = False
         self.noFeedBackCount = 0
         self.feedBackCount = 0
         self.sendCount = 0
-        self.protocol = open_protocol_file()
 
-    def get_protocol(self):
-        if self.protocol:
-            return self.protocol
-        else:
-            raise Exception("there is no protocol")
 
     def get_noFeedBackCount(self):
         return self.sendCount - self.feedBackCount
@@ -59,14 +70,6 @@ class _Com:
     def get_sendCount(self):
         return self.sendCount
 
-    def receive_data_with_protocol(self):
-        if self.protocol:
-            current_position = 0x00
-            saved_data = bytearray()
-
-
-        else:
-            raise Exception("there is no protocol")
 
     def receive_data(self, length_set=1):
         while not self.receiveProgressStop:
