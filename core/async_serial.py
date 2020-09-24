@@ -2,6 +2,7 @@ import serial
 import serial.tools.list_ports
 import argparse
 import yaml
+import time
 import contextlib
 
 __title__ = 'tempsampling'
@@ -109,8 +110,8 @@ def find_serial_port_list():
 
 
 @contextlib.contextmanager
-def open_file(path):
-    file_handler = open(path, 'r')
+def open_file(path, mode='r'):
+    file_handler = open(path, mode)
     try:
         yield file_handler
     except IOError as why:
@@ -125,6 +126,7 @@ class ComReadWrite:
         self.protocol = Protocol()
         self.lost_package_info = []
         self.lag_package_info = []
+        self.max_lag_pack_len = 3
         self.ready_recv_pack_info = None
         self.recv_data_process_flag = False
         self.send_data_process_flag = False
@@ -166,7 +168,7 @@ class ComReadWrite:
                 raise Exception("串口数据接收错误")
         return bytes(ba)
 
-    def send_data(self, data):
+    def _send_data(self, data):
         self.com.send_data(data)
 
     def recv_data_process(self):
@@ -184,8 +186,12 @@ class ComReadWrite:
     def send_data_process(self, package):
         if self.send_data_process_flag:
             if self.ready_recv_pack_info:
-                self.lag_package_info.append(self.ready_recv_pack_info)
-            self.send_data(package)
+                if self.max_lag_pack_len <= len(self.lag_package_info):
+                    last_pack_info = self.lag_package_info.pop(-1)
+                    self.lost_package_info.append(last_pack_info)
+                else:
+                    self.lag_package_info.append(self.ready_recv_pack_info)
+            self._send_data(package)
             self._update_recv_pack_info(package.get_seiralnum())
 
             self.recv_data_process_flag = True
@@ -193,8 +199,27 @@ class ComReadWrite:
     def _update_recv_pack_info(self, new_pack_info):
         self.ready_recv_pack_info = new_pack_info
 
+    def close(self):
+        self.recv_data_process_flag = False
+        self.send_data_process_flag = False
+        error_filename = generate_filename('error')
+        lag_filename = generate_filename('lag')
+        with open_file(error_filename, 'w') as f:
+            for info in self.lost_package_info:
+                f.write(info)
 
+        with open_file(lag_filename, 'w') as f:
+            for info in self.lag_package_info:
+                f.write(info)
 
+def generate_filename(fragment):
+    return fragment + generate_timestamp()
+
+def generate_timestamp():
+    return str(int(time.time()))
+
+def setup():
+    com_process = ComReadWrite()
 
 def main():
     parser = argparse.ArgumentParser(description=f'TempSampling {__version__} - TUXIHUOZAIGONGCHENG', prog='TempSampling')
@@ -235,5 +260,6 @@ def main():
     if args.serial_connect:
         pass
         # TODO:串口连接
+
 if __name__ == '__main__':
     main()
