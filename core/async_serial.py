@@ -65,6 +65,22 @@ class Com:
             except Exception as why:
                 raise why
 
+class Protocol:
+    def __init__(self, path):
+        self._protocol = self._get_protocol_from_file(path)
+        pass
+
+
+    @staticmethod
+    def _get_protocol_from_file(path):
+        with open_file(path) as f:
+            try:
+                protocol_dict = yaml.load(f)
+            except yaml.YAMLError as why:
+                print("error format")
+            else:
+                return protocol_dict
+
 def detect_serial_port():
     port_list = find_serial_port_list()
     if port_list:
@@ -76,6 +92,7 @@ def detect_serial_port():
 
 def find_serial_port_list():
     return sorted(serial.tools.list_ports.comports())
+
 
 @contextlib.contextmanager
 def open_file(path):
@@ -89,24 +106,33 @@ def open_file(path):
         return
 
 
-def get_protocol(path):
-    with open_file(path) as f:
-        try:
-            protocol_dict = yaml.load(f)
-        except yaml.YAMLError as why:
-            print("error format")
-        else:
-            return protocol_dict
+
 
 
 def receive_data_with_protocol(com, protocol):
     if type(com) is Com:
         raise Exception("No Com")
-    if PROTOCOL:
+    if protocol:
+        serial_protocol = protocol['serial']
+        part_protocol_len =serial_protocol['device_type']['size']+\
+                           serial_protocol['message_id']['size']+\
+                           serial_protocol['serial_number']['size']+\
+                           serial_protocol['client_id']['size']
         try:
             current_position = 0x00
             saved_data = bytearray()
-            pass
+            data_len = 0
+            for token, properties in serial_protocol.items():
+                x = com.receive_data()
+                ch = ord(x)
+                if token == 'fixed_token' or token == 'reserverd_token':
+                    if properties['value'] != ch:
+                        break
+                if token == 'D_LEN':
+                    data_len = ch + part_protocol_len
+                if token ==
+
+
         except:
             pass
     else:
