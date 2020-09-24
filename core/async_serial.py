@@ -1,7 +1,8 @@
 import serial
 import serial.tools.list_ports
 import argparse
-import json
+import yaml
+import contextlib
 
 __title__ = 'tempsampling'
 __version__ = '0.1.0'
@@ -12,43 +13,7 @@ __copyright__ = 'Copyright 2020 Binjie Feng'
 
 PROTOCOL = None
 
-def detect_serial_port():
-    port_list = find_serial_port_list()
-    if port_list:
-        for port in port_list:
-            # TODO:输出格式化
-            pass
-    return port_list
-
-
-def find_serial_port_list():
-    return sorted(serial.tools.list_ports.comports())
-
-
-def open_protocol_file():
-    with open("protocol.json", 'r') as p:
-        try:
-            protocol_dict = json.dumps(p)
-        except json.JSONDecodeError as why:
-            raise why
-    return protocol_dict
-
-def receive_data_with_protocol(self):
-    if self.protocol:
-        current_position = 0x00
-        saved_data = bytearray()
-
-
-    else:
-        raise Exception("there is no protocol")
-
-def get_protocol(self):
-    if self.protocol:
-        return self.protocol
-    else:
-        raise Exception("there is no protocol")
-
-class _Com:
+class Com:
     def __init__(self, url, baudrate):
         if url in find_serial_port_list():
             self.com = serial.Serial()
@@ -99,6 +64,57 @@ class _Com:
                 self.com.close()
             except Exception as why:
                 raise why
+
+def detect_serial_port():
+    port_list = find_serial_port_list()
+    if port_list:
+        for port in port_list:
+            # TODO:输出格式化
+            pass
+    return port_list
+
+
+def find_serial_port_list():
+    return sorted(serial.tools.list_ports.comports())
+
+@contextlib.contextmanager
+def open_file(path):
+    file_handler = open(path, 'r')
+    try:
+        yield file_handler
+    except IOError as why:
+        print('File is not accessible')
+    finally:
+        file_handler.close()
+        return
+
+
+def get_protocol(path):
+    with open_file(path) as f:
+        try:
+            protocol_dict = yaml.load(f)
+        except yaml.YAMLError as why:
+            print("error format")
+        else:
+            return protocol_dict
+
+
+def receive_data_with_protocol(com, protocol):
+    if type(com) is Com:
+        raise Exception("No Com")
+    if PROTOCOL:
+        try:
+            current_position = 0x00
+            saved_data = bytearray()
+            pass
+        except:
+            pass
+    else:
+        raise Exception("there is no protocol")
+
+
+
+
 
 
 
