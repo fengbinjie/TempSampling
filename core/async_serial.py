@@ -4,6 +4,8 @@ import argparse
 import yaml
 import time
 import contextlib
+import os
+
 
 __title__ = 'tempsampling'
 __version__ = '0.1.0'
@@ -12,10 +14,17 @@ __author__ = 'Binjie Feng'
 __license__ = 'ISC'
 __copyright__ = 'Copyright 2020 Binjie Feng'
 
-PROTOCOL = None
+DEFAULT_COM = None
+if os.name is 'nt':
+    DEFAULT_COM = ''
+elif os.name is 'posix':
+    DEFAULT_COM = '/dev/ttyAMA0'
+else:
+    raise Exception('unsupported system')
+
 
 class Com:
-    def __init__(self, url, baudrate):
+    def __init__(self, url=DEFAULT_COM, baudrate=115200):
         if url in find_serial_port_list():
             self.com = serial.Serial()
         else:
