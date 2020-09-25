@@ -1,11 +1,11 @@
-import serial
-import serial.tools.list_ports
 import argparse
-import yaml
-import time
 import contextlib
 import os
+import time
 
+import serial
+import serial.tools.list_ports
+import yaml
 
 __title__ = 'tempsampling'
 __version__ = '0.1.0'
@@ -35,7 +35,6 @@ class Com:
         self.feedBackCount = 0
         self.sendCount = 0
 
-
     def get_noFeedBackCount(self):
         return self.sendCount - self.feedBackCount
 
@@ -45,23 +44,22 @@ class Com:
     def get_sendCount(self):
         return self.sendCount
 
-
     def receive_data(self, length_set=1):
         while not self.receiveProgressStop:
             length = length_set if length_set else max(1, min(2048, self.com.in_waiting))
             try:
-                bytes = self.com.read(length)
+                _bytes = self.com.read(length)
             except Exception as why:
                 raise why
             else:
                 self.feedBackCount += 1
-                return bytes
+                return _bytes
 
     def send_data(self, data):
         if self.com.is_open and data != -1:
             return
         try:
-                self.com.write(data)
+            self.com.write(data)
         except Exception as why:
             raise why
         else:
@@ -75,25 +73,31 @@ class Com:
             except Exception as why:
                 raise why
 
+
+class ProtocolParamAttribute:
+    def __init__(self, index, size, value):
+        self.index, self.size, self.value = index, size, value
+
+
 class Protocol:
     _instance = None
+
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self):
-        self.fixed_token =(1,2,0xabcd)
-        self.reservered_token = (2,2,0x0000)
-        self.D_LEN = [3,1,None]
-        self.device_type = [4,1,None]
-        self.message_id = [5,2,None]
-        self.serial_number = [6,2,None]
-        self.client_id = [7,2,None]
-        self.DATA = [8,None,None]
-        self.CHECK = [9,1,None]
+        self.fixed_token = ProtocolParamAttribute(1, 2, 0xabcd)
+        self.reservered_token = ProtocolParamAttribute(2, 2, 0x0000)
+        self.D_LEN = ProtocolParamAttribute(3, 1, None)
+        self.device_type = ProtocolParamAttribute(4, 1, None)
+        self.message_id = ProtocolParamAttribute(5, 2, None)
+        self.serial_number = ProtocolParamAttribute(6, 2, None)
+        self.client_id = ProtocolParamAttribute(7, 2, None)
+        self.DATA = ProtocolParamAttribute(8, None, None)
+        self.CHECK = ProtocolParamAttribute(9, 1, None)
         pass
-
 
     @staticmethod
     def _get_protocol_from_file(path):
@@ -104,6 +108,7 @@ class Protocol:
                 print("error format")
             else:
                 return protocol_dict
+
 
 def detect_serial_port():
     port_list = find_serial_port_list()
@@ -128,6 +133,7 @@ def open_file(path, mode='r'):
     finally:
         file_handler.close()
         return
+
 
 class ComReadWrite:
     def __init__(self):
@@ -199,9 +205,6 @@ class ComReadWrite:
             else:
                 pass
 
-
-
-
     def send_data_process(self, package):
         if self.send_data_process_flag:
             serial_num = package.get_seiralnum()
@@ -218,8 +221,6 @@ class ComReadWrite:
             self.expected_package_lv1 = serial_num
             self.recv_data_process_flag = True
 
-
-
     def close(self):
         self.recv_data_process_flag = False
         self.send_data_process_flag = False
@@ -233,17 +234,22 @@ class ComReadWrite:
             for info in self.lag_package_info:
                 f.write(info)
 
+
 def generate_filename(fragment):
     return fragment + generate_timestamp()
+
 
 def generate_timestamp():
     return str(int(time.time()))
 
+
 def setup():
     com_process = ComReadWrite()
 
+
 def main():
-    parser = argparse.ArgumentParser(description=f'TempSampling {__version__} - TUXIHUOZAIGONGCHENG', prog='TempSampling')
+    parser = argparse.ArgumentParser(description=f'TempSampling {__version__} - TUXIHUOZAIGONGCHENG',
+                                     prog='TempSampling')
 
     parser.add_argument('-p',
                         '--ports',
@@ -281,6 +287,7 @@ def main():
     if args.serial_connect:
         pass
         # TODO:串口连接
+
 
 if __name__ == '__main__':
     main()
