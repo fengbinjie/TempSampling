@@ -110,6 +110,10 @@ class Protocol:
                 return protocol_dict
 
 
+def pack(*args,**kwargs):
+    protocol = Protocol()
+    protocol.fixed_token.
+
 def detect_serial_port():
     port_list = find_serial_port_list()
     if port_list:

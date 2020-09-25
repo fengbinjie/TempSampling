@@ -1,0 +1,37 @@
+serial:
+  fixed_token:
+    index: 1
+    size: 2
+    value: 0xabcd
+  resevered_token:
+    index: 2
+    size: 2
+    value: 0x0000
+  D_LEN:
+     index: 3
+     size: 1
+     value: null
+  device_type:
+    index: 4
+    size: 1
+    value: null
+  message_id:
+    index: 5
+    size: 2
+    value: null
+  serial_number:
+     index: 6
+     size: 2
+     value: null
+  client_id:
+     index: 7
+     size: 2
+     value: null
+  DATA:
+     index: 8
+     size: null
+     value: null
+  CHECK:
+     index: 9
+     size: 1
+     value: null
