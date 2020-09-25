@@ -2,7 +2,7 @@ import argparse
 import contextlib
 import os
 import time
-
+import struct
 import serial
 import serial.tools.list_ports
 import yaml
@@ -95,8 +95,9 @@ class Protocol:
         self.message_id = ProtocolParamAttribute(5, 2, None)
         self.serial_number = ProtocolParamAttribute(6, 2, None)
         self.client_id = ProtocolParamAttribute(7, 2, None)
-        self.DATA = ProtocolParamAttribute(8, None, None)
+        self.DATA = ProtocolParamAttribute(8, 1, None)
         self.CHECK = ProtocolParamAttribute(9, 1, None)
+        self._endian = '<'
         pass
 
     @staticmethod
@@ -109,10 +110,36 @@ class Protocol:
             else:
                 return protocol_dict
 
+    def _write_protocol_content(self):
+        pass
+
+    def write_data(self, data):
+        self.DATA.size, self.D_LEN.value = len(data), data
+
+    def get_endian(self):
+        return self._endian
+
+    def get_protocol_content(self):
+        if self.DATA.value:
+            return self.fixed_token.value,\
+                   self.reservered_token.value,\
+                   self.D_LEN.value,\
+                   self.device_type.value,\
+                   self.message_id.value,\
+                   self.serial_number.value,\
+                   self.client_id.value,\
+                   self.DATA.value,\
+                   self.CHECK.value
+        else:
+            raise Exception('No data')
+    @classmethod
+    def get_protocol(cls):
+
+        return cls._instance if cls._instance else cls()
 
 def pack(*args,**kwargs):
     protocol = Protocol()
-    protocol.fixed_token.
+    protocol.fixed_token.value
 
 def detect_serial_port():
     port_list = find_serial_port_list()
