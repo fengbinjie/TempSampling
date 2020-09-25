@@ -143,35 +143,35 @@ class ComReadWrite:
 
     def receive_data_with_protocol(self):
         ba = bytearray()
-        state = 1
+        state = 0b00000001
         temp_data_len = 0
         len_token = 0
         while self.com.com.inWaiting():
             x = self.com.receive_data()
             ch = ord(x)
-            if state == 1 and 0xcd == ch:
-                state = 2
+            if state & 0b00000001 and 0xcd == ch:
+                state <<= 1
                 ba.append(ch)
-            elif state == 2 and 0xab == ch:
-                state = 3
+            elif state & 0b00000010 and 0xab == ch:
+                state <<= 1
                 ba.append(ch)
-            elif state == 3:
+            elif state & 0b00000100:
+                state <<= 1
                 ba.append(ch)
-                state = 4
-            elif state == 4:
+            elif state & 0b00001000:
+                state <<= 1
                 ba.append(ch)
-                state = 5
-            elif state == 5:
+            elif state & 0b00010000:
+                state <<= 1
                 len_token = ch
                 ba.append(ch)
-                state = 6
                 temp_data_len = 0
-            elif state == 6:
+            elif state & 0b00100000:
                 ba.append(ch)
                 temp_data_len += 1
                 if temp_data_len == len_token + 7:
-                    state = 7
-            elif state == 7:
+                    state <<= 0b01000000
+            elif state & 0b01000000:
                 ba.append(ch)
             else:
                 raise Exception("串口数据接收错误")
