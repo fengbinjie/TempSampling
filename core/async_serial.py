@@ -133,10 +133,13 @@ class ComReadWrite:
     def __init__(self):
         self.com = Com()
         self.protocol = Protocol()
-        self.lost_package_info = []
-        self.lag_package_info = []
-        self.max_lag_pack_len = 3
-        self.ready_recv_pack_info = None
+        self.current_sent_package = None
+        self.expected_package_lv1 = None
+        self.expected_package_lv2 = None
+        self.expected_package_lv3 = None
+        self.lost_package_list = []
+        self.timeout_recv_package_list_1 = []
+        self.timeout_recv_package_list_2 = []
         self.recv_data_process_flag = False
         self.send_data_process_flag = False
         self.next_send = 0
@@ -174,7 +177,7 @@ class ComReadWrite:
             elif state & 0b01000000:
                 ba.append(ch)
             else:
-                raise Exception("串口数据接收错误")
+                state = 0b00000001
         return bytes(ba)
 
     def _send_data(self, data):
@@ -184,29 +187,38 @@ class ComReadWrite:
         if self.recv_data_process_flag:
             data = self.receive_data_with_protocol()
             serial_num = data.serial_getserialnum()
-            if serial_num == self.ready_recv_pack_info:
-                self._update_recv_pack_info(None)
-            elif serial_num in self.lag_package_info:
-                self.lag_package_info.remove(serial_num)
+
+            if serial_num == self.expected_package_lv1:
+                self.expected_package_lv1 = None
+            elif serial_num == self.expected_package_lv2:
+                self.expected_package_lv2 = None
+                self.timeout_recv_package_list_1.append(serial_num)
+            elif serial_num == self.expected_package_lv3:
+                self.expected_package_lv3 = None
+                self.timeout_recv_package_list_2.append(serial_num)
             else:
-                self.lost_package_info.append(serial_num)
+                pass
+
+
 
 
     def send_data_process(self, package):
         if self.send_data_process_flag:
-            if self.ready_recv_pack_info:
-                if self.max_lag_pack_len <= len(self.lag_package_info):
-                    last_pack_info = self.lag_package_info.pop(-1)
-                    self.lost_package_info.append(last_pack_info)
-                else:
-                    self.lag_package_info.append(self.ready_recv_pack_info)
-            self._send_data(package)
-            self._update_recv_pack_info(package.get_seiralnum())
+            serial_num = package.get_seiralnum()
+            self.current_sent_package = serial_num
 
+            if self.expected_package_lv3:
+                self.lost_package_list.append(self.expected_package_lv3)
+            if self.expected_package_lv2:
+                self.expected_package_lv3 = self.expected_package_lv2
+            if self.expected_package_lv1:
+                self.expected_package_lv2 = self.expected_package_lv1
+
+            self._send_data(package)
+            self.expected_package_lv1 = serial_num
             self.recv_data_process_flag = True
 
-    def _update_recv_pack_info(self, new_pack_info):
-        self.ready_recv_pack_info = new_pack_info
+
 
     def close(self):
         self.recv_data_process_flag = False
