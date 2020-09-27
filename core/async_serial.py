@@ -76,10 +76,10 @@ class Com:
 
 class ProtocolParamAttribute:
     def __init__(self, index, size, value):
-        self.index, self.size, self.value = index, size, value
+        self.index, self.type, self.value = index, size, value
 
 
-class Protocol:
+class _Protocol:
     _instance = None
 
     def __new__(cls, *args, **kwargs):
@@ -88,17 +88,33 @@ class Protocol:
         return cls._instance
 
     def __init__(self):
-        self.fixed_token = ProtocolParamAttribute(1, 2, 0xabcd)
-        self.reservered_token = ProtocolParamAttribute(2, 2, 0x0000)
-        self.D_LEN = ProtocolParamAttribute(3, 1, None)
-        self.device_type = ProtocolParamAttribute(4, 1, None)
-        self.message_id = ProtocolParamAttribute(5, 2, None)
-        self.serial_number = ProtocolParamAttribute(6, 2, None)
-        self.client_id = ProtocolParamAttribute(7, 2, None)
-        self.DATA = ProtocolParamAttribute(8, 1, None)
-        self.CHECK = ProtocolParamAttribute(9, 1, None)
-        self._endian = '<'
-        pass
+        self.fixed_token = ProtocolParamAttribute(1, 'H', 0xabcd)
+        self.reservered_token = ProtocolParamAttribute(2, 'H', 0x0000)
+        self.D_LEN = ProtocolParamAttribute(3, 'B', None)
+        self.device_type = ProtocolParamAttribute(4, 'B', None)
+        self.message_id = ProtocolParamAttribute(5, 'H', None)
+        self.serial_number = ProtocolParamAttribute(6, 'H', None)
+        self.client_id = ProtocolParamAttribute(7, 'H', None)
+        self.DATA = ProtocolParamAttribute(8, 's', None)
+        self.CHECK = ProtocolParamAttribute(9, 'B', None)
+        self.__endian = '<'
+        self.protocol_content = {}
+        for var, value in self.__dict__.items():
+            if isinstance(value, ProtocolParamAttribute):
+                self.protocol_content[var] = value
+
+    def get_all_size(self):
+        all_size = 0
+        for c in self.protocol_content:
+            all_size += c.type
+        return all_size
+
+    def get_format(self):
+        return self.__endian + self.get_all_size()
+
+    def set_content(self, D_LEN, device_type,message_id,serial_number,client_id, DATA):
+        self.protocol_content.update(locals())
+        return [c for c in self.protocol_content.values()]
 
     @staticmethod
     def _get_protocol_from_file(path):
@@ -113,8 +129,8 @@ class Protocol:
     def _write_protocol_content(self):
         pass
 
-    def write_data(self, data):
-        self.DATA.size, self.D_LEN.value = len(data), data
+    def set_data(self, data):
+        self.DATA.value, self.D_LEN.value = data, len(data)
 
     def get_endian(self):
         return self._endian
@@ -132,14 +148,19 @@ class Protocol:
                    self.CHECK.value
         else:
             raise Exception('No data')
+
     @classmethod
     def get_protocol(cls):
 
         return cls._instance if cls._instance else cls()
 
-def pack(*args,**kwargs):
-    protocol = Protocol()
-    protocol.fixed_token.value
+
+
+def pack(data):
+    protocol = _Protocol.get_protocol()
+    if data:
+        protocol.write_data(data)
+        struct.pack()
 
 def detect_serial_port():
     port_list = find_serial_port_list()
