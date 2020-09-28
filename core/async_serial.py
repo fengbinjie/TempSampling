@@ -6,6 +6,7 @@ import struct
 import serial
 import serial.tools.list_ports
 import yaml
+from collections import OrderedDict
 
 __title__ = 'tempsampling'
 __version__ = '0.1.0'
@@ -75,11 +76,12 @@ class Com:
 
 
 class ProtocolParamAttribute:
-    def __init__(self, index, size, value):
-        self.index, self.type, self.value = index, size, value
+    def __init__(self, index, fmt, value):
+        self.index, self.fmt, self.value = index, fmt, value
 
 
 class _Protocol:
+    # TODO: 该类应该可以动态生成
     _instance = None
 
     def __new__(cls, *args, **kwargs):
@@ -95,26 +97,51 @@ class _Protocol:
         self.message_id = ProtocolParamAttribute(5, 'H', None)
         self.serial_number = ProtocolParamAttribute(6, 'H', None)
         self.client_id = ProtocolParamAttribute(7, 'H', None)
-        self.DATA = ProtocolParamAttribute(8, 's', None)
-        self.CHECK = ProtocolParamAttribute(9, 'B', None)
-        self.__endian = '<'
-        self.protocol_content = {}
+
+        # 将所有协议头格式存在header_content顺序字典中
+        self.header_content = OrderedDict()
         for var, value in self.__dict__.items():
             if isinstance(value, ProtocolParamAttribute):
-                self.protocol_content[var] = value
+                self.header_content[var] = value
 
-    def get_all_size(self):
-        all_size = 0
-        for c in self.protocol_content:
-            all_size += c.type
+        self.header_fmt = self._get_header_fmt()
+        self.data = None
+        self.check = None
+        self._endian = '<'
+
+    def _get_header_fmt(self):
+        all_size = ''
+        for c in self.header_content.values():
+            all_size += c.fmt
         return all_size
 
-    def get_format(self):
-        return self.__endian + self.get_all_size()
+    def _get_header_content(self):
+        return [v.value for v in self.header_content.values()]
 
-    def set_content(self, D_LEN, device_type,message_id,serial_number,client_id, DATA):
-        self.protocol_content.update(locals())
-        return [c for c in self.protocol_content.values()]
+    def _set_header(self, D_LEN, device_type, message_id, serial_number, client_id):
+        kwargs = locals()
+        kwargs.pop('self')
+        for var, value in kwargs.items():
+            self.header_content[var].value = value
+        # self.protocol_content['D_LEN'].value = D_LEN
+        # self.protocol_content['device_type'].value = device_type
+        # self.protocol_content['message_id'].value = message_id
+        # self.protocol_content['serial_number'].value = serial_number
+        # self.protocol_content['client_id'].value = client_id
+        # self.protocol_content['DATA'].value = DATA
+
+    def get_bytes(self, D_LEN, device_type, message_id, serial_number, client_id, DATA):
+        if not isinstance(DATA, bytes):
+            raise Exception('argument DATA must be a bytes object')
+        self._set_header(D_LEN, device_type, message_id, serial_number, client_id)
+
+        complete_fmt = self._endian + self.header_fmt + f'{D_LEN}s'
+        # 打包头、数据
+        values_bytes = struct.pack(complete_fmt, *(self._get_header_content()), DATA)
+        # 打包校验码
+        check_byte = struct.pack(f'{self._endian}B', check(values_bytes))
+
+        return values_bytes+check_byte
 
     @staticmethod
     def _get_protocol_from_file(path):
@@ -129,32 +156,19 @@ class _Protocol:
     def _write_protocol_content(self):
         pass
 
-    def set_data(self, data):
-        self.DATA.value, self.D_LEN.value = data, len(data)
-
     def get_endian(self):
         return self._endian
-
-    def get_protocol_content(self):
-        if self.DATA.value:
-            return self.fixed_token.value,\
-                   self.reservered_token.value,\
-                   self.D_LEN.value,\
-                   self.device_type.value,\
-                   self.message_id.value,\
-                   self.serial_number.value,\
-                   self.client_id.value,\
-                   self.DATA.value,\
-                   self.CHECK.value
-        else:
-            raise Exception('No data')
 
     @classmethod
     def get_protocol(cls):
 
         return cls._instance if cls._instance else cls()
 
-
+def check(buf):
+    xor_result = 0
+    for v in buf:
+        xor_result = xor_result ^ v
+    return xor_result
 
 def pack(data):
     protocol = _Protocol.get_protocol()

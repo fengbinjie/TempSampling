@@ -15,3 +15,6 @@ class AsyncSerialTestSuite(unittest.TestCase):
     def test_set_conten(self):
         result = aserial._Protocol.get_protocol().set_content(1,2,3,4,5,6)
         print(result)
+    def test_get_bytes(self):
+        result = aserial._Protocol.get_protocol().get_bytes(1,2,3,4,5,b'6')
+        print(result)
