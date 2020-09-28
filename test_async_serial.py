@@ -18,3 +18,6 @@ class AsyncSerialTestSuite(unittest.TestCase):
     def test_get_bytes(self):
         result = aserial._Protocol.get_protocol().get_bytes(1,2,3,4,5,b'6')
         print(result)
+    def test_get_header_content(self):
+        result = aserial._Protocol.get_protocol().get_header_content(b'\xcd\xab\x00\x00\x01\x02\x03\x00\x04\x00\x05\x006Q')
+        print(result)

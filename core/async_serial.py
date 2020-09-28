@@ -80,6 +80,60 @@ class ProtocolParamAttribute:
         self.index, self.fmt, self.value = index, fmt, value
 
 
+class Sub_Protocol:
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        self.fixed_token = ProtocolParamAttribute(1,'B',0xcb)
+        self.LEN = ProtocolParamAttribute(2,'B',None)
+        self.client_id = ProtocolParamAttribute(3,'B',None)
+        self.dest_addr = ProtocolParamAttribute(4,'H',None)
+        self.profile_id = ProtocolParamAttribute(5,'B',None)
+        self.serial_num = ProtocolParamAttribute(6,'B',None)
+        self.header = OrderedDict()
+        for var, value in self.__dict__.items():
+            if isinstance(value, ProtocolParamAttribute):
+                self.header[var] = value
+
+        self.header_fmt = ''.join([v.fmt for v in self.header.values()])
+        self.header_fmt_size = sum({'B': 1, 'H': 2, 'I': 4}[c.fmt] for c in self.header.values())
+        self.endian = '<'
+        self.data = None
+
+    def _set_header(self,D_LEN, LEN,client_id,dest_addr,profile_id,serial_num):
+        kwargs = locals()
+        kwargs.pop('self')
+        for var_name, var_value in kwargs.items():
+            self.header[var_name].value = var_value
+
+    def _get_header_content(self):
+        return [v.value for v in self.header.values()]
+
+    def get_bytes(self,LEN,client_id,dest_addr,profile_id,serial_num,DATA):
+        self._set_header(LEN,client_id,dest_addr,profile_id,serial_num)
+        complete_fmt = self.endian + self.header_fmt + f'{LEN}s'
+        # 打包头、数据
+        values_bytes = struct.pack(complete_fmt, *(self._get_header_content()), DATA)
+
+        return values_bytes
+
+    def unpack_bytes(self, acquired_bytes):
+        fixed_token,\
+        LEN, \
+        client_id, \
+        dest_addr, \
+        profile_id,\
+        serial_number = struct.unpack_from(self.endian+self.header_fmt, acquired_bytes)
+        data = struct.unpack_from(f'{self.endian}{LEN}s', acquired_bytes, offset=self.header_fmt_size)
+        return data
+
+
+
 class _Protocol:
     # TODO: 该类应该可以动态生成
     _instance = None
@@ -95,34 +149,30 @@ class _Protocol:
         self.D_LEN = ProtocolParamAttribute(3, 'B', None)
         self.device_type = ProtocolParamAttribute(4, 'B', None)
         self.message_id = ProtocolParamAttribute(5, 'H', None)
-        self.serial_number = ProtocolParamAttribute(6, 'H', None)
-        self.client_id = ProtocolParamAttribute(7, 'H', None)
+        self.serial_number = ProtocolParamAttribute(6, 'B', None)
+        self.client_id = ProtocolParamAttribute(7, 'B', None)
 
         # 将所有协议头格式存在header_content顺序字典中
-        self.header_content = OrderedDict()
+        self.header = OrderedDict()
         for var, value in self.__dict__.items():
             if isinstance(value, ProtocolParamAttribute):
-                self.header_content[var] = value
+                self.header[var] = value
 
-        self.header_fmt = self._get_header_fmt()
+        self.header_fmt = ''.join(c.fmt for c in self.header.values())
+        self.header_fmt_size = sum({'B': 1, 'H': 2, 'I': 4}[c.fmt] for c in self.header.values())
         self.data = None
         self.check = None
         self._endian = '<'
-
-    def _get_header_fmt(self):
-        all_size = ''
-        for c in self.header_content.values():
-            all_size += c.fmt
-        return all_size
+        self.got_content = 0
 
     def _get_header_content(self):
-        return [v.value for v in self.header_content.values()]
+        return [v.value for v in self.header.values()]
 
     def _set_header(self, D_LEN, device_type, message_id, serial_number, client_id):
         kwargs = locals()
         kwargs.pop('self')
         for var, value in kwargs.items():
-            self.header_content[var].value = value
+            self.header[var].value = value
         # self.protocol_content['D_LEN'].value = D_LEN
         # self.protocol_content['device_type'].value = device_type
         # self.protocol_content['message_id'].value = message_id
@@ -142,6 +192,19 @@ class _Protocol:
         check_byte = struct.pack(f'{self._endian}B', check(values_bytes))
 
         return values_bytes+check_byte
+
+    def get_header_content(self, acquired_bytes):
+        fixed_token,\
+        reservered_token,\
+        D_LEN, \
+        device_type,\
+        message_id,\
+        serial_number,\
+        client_id = struct.unpack_from(self._endian+self.header_fmt, acquired_bytes)
+
+        data_check_fmt = f'{self._endian}{D_LEN}sB'
+        data, check = struct.unpack_from(data_check_fmt, acquired_bytes, offset=self.header_fmt_size)
+        return data, check
 
     @staticmethod
     def _get_protocol_from_file(path):
@@ -170,11 +233,6 @@ def check(buf):
         xor_result = xor_result ^ v
     return xor_result
 
-def pack(data):
-    protocol = _Protocol.get_protocol()
-    if data:
-        protocol.write_data(data)
-        struct.pack()
 
 def detect_serial_port():
     port_list = find_serial_port_list()
@@ -204,7 +262,7 @@ def open_file(path, mode='r'):
 class ComReadWrite:
     def __init__(self):
         self.com = Com()
-        self.protocol = Protocol()
+        self.protocol = _Protocol()
         self.current_sent_package = None
         self.expected_package_lv1 = None
         self.expected_package_lv2 = None
