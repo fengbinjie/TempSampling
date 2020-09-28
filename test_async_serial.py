@@ -10,13 +10,13 @@ class AsyncSerialTestSuite(unittest.TestCase):
         self.assertIsInstance(result, dict)
 
     def test_get_content(self):
-        result = aserial._Protocol.get_protocol().protocol_content
+        result = aserial._Protocol.get_protocol().header
         print(result)
-    def test_set_conten(self):
+    def test_set_content(self):
         result = aserial._Protocol.get_protocol().set_content(1,2,3,4,5,6)
         print(result)
     def test_get_bytes(self):
-        result = aserial._Protocol.get_protocol().get_bytes(1,2,3,4,5,b'6')
+        result = aserial._Protocol.get_protocol().produce_package(1, 2, 3, 4, 5, b'6')
         print(result)
     def test_get_header_content(self):
         result = aserial._Protocol.get_protocol().get_header_content(b'\xcd\xab\x00\x00\x01\x02\x03\x00\x04\x00\x05\x006Q')
@@ -24,7 +24,7 @@ class AsyncSerialTestSuite(unittest.TestCase):
 
     def test_sub_get_bytes(self):
         data = b''
-        result = aserial.Sub_Protocol.get_sub_protocol().get_bytes(len(data),2,3,4,5,data)
+        result = aserial.Sub_Protocol.get_sub_protocol().produce_sub_package(len(data), 2, 3, 4, 5, data)
         print(result)
 
     def test_complete_package(self):

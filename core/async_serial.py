@@ -114,7 +114,7 @@ class Sub_Protocol:
     def _get_header_content(self):
         return [v.value for v in self.header.values()]
 
-    def get_bytes(self,LEN,client_id,dest_addr,profile_id,serial_num,DATA):
+    def produce_sub_package(self, LEN, client_id, dest_addr, profile_id, serial_num, DATA):
         self._set_header(LEN,client_id,dest_addr,profile_id,serial_num)
         complete_fmt = self.endian + self.header_fmt + f'{LEN}s'
         # 打包头、数据
@@ -135,6 +135,13 @@ class Sub_Protocol:
     @classmethod
     def get_sub_protocol(cls):
         return cls._instance if cls._instance else cls()
+
+class Package:
+    '''
+    此类由Protocol类创造，可创建多个
+    '''
+    def __init__(self,*args, **kwargs):
+        pass
 
 class _Protocol:
     # TODO: 该类应该可以动态生成
@@ -182,7 +189,7 @@ class _Protocol:
         # self.protocol_content['client_id'].value = client_id
         # self.protocol_content['DATA'].value = DATA
 
-    def get_bytes(self, D_LEN, device_type, message_id, serial_number, client_id, DATA):
+    def produce_package(self, D_LEN, device_type, message_id, serial_number, client_id, DATA):
         if not isinstance(DATA, bytes):
             raise Exception('argument DATA must be a bytes object')
         self._set_header(D_LEN, device_type, message_id, serial_number, client_id)
@@ -235,15 +242,20 @@ def check(buf):
         xor_result = xor_result ^ v
     return xor_result
 
+sub_protocol = Sub_Protocol.get_sub_protocol()
+protocol = _Protocol.get_protocol()
+
 def complete_package(device_type,profile_id,serial_num,client_id,dest_addr,Data):
     if not isinstance(Data, bytes):
         raise Exception("arguements is not a bytes")
-    sub_protocol = Sub_Protocol.get_sub_protocol()
-    protocol = _Protocol.get_protocol()
-    sub_package = sub_protocol.get_bytes(len(Data),client_id,dest_addr,profile_id,serial_num,Data)
-    package = protocol.get_bytes(len(sub_package), device_type, profile_id, serial_num, client_id, sub_package)
+
+    sub_package = sub_protocol.produce_sub_package(len(Data), client_id, dest_addr, profile_id, serial_num, Data)
+    package = protocol.produce_package(len(sub_package), device_type, profile_id, serial_num, client_id, sub_package)
     return package
 
+def parse_package(package):
+    protocol.get_header_content(package)
+    pass
 def detect_serial_port():
     port_list = find_serial_port_list()
     if port_list:
