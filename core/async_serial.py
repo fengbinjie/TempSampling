@@ -105,7 +105,7 @@ class Sub_Protocol:
         self.endian = '<'
         self.data = None
 
-    def _set_header(self,D_LEN, LEN,client_id,dest_addr,profile_id,serial_num):
+    def _set_header(self,LEN,client_id,dest_addr,profile_id,serial_num):
         kwargs = locals()
         kwargs.pop('self')
         for var_name, var_value in kwargs.items():
@@ -132,7 +132,9 @@ class Sub_Protocol:
         data = struct.unpack_from(f'{self.endian}{LEN}s', acquired_bytes, offset=self.header_fmt_size)
         return data
 
-
+    @classmethod
+    def get_sub_protocol(cls):
+        return cls._instance if cls._instance else cls()
 
 class _Protocol:
     # TODO: 该类应该可以动态生成
@@ -233,6 +235,14 @@ def check(buf):
         xor_result = xor_result ^ v
     return xor_result
 
+def complete_package(device_type,profile_id,serial_num,client_id,dest_addr,Data):
+    if not isinstance(Data, bytes):
+        raise Exception("arguements is not a bytes")
+    sub_protocol = Sub_Protocol.get_sub_protocol()
+    protocol = _Protocol.get_protocol()
+    sub_package = sub_protocol.get_bytes(len(Data),client_id,dest_addr,profile_id,serial_num,Data)
+    package = protocol.get_bytes(len(sub_package), device_type, profile_id, serial_num, client_id, sub_package)
+    return package
 
 def detect_serial_port():
     port_list = find_serial_port_list()
