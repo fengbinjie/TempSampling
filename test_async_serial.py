@@ -36,12 +36,17 @@ class AsyncSerialTestSuite(unittest.TestCase):
 
     def test_dynamic_package(self):
         data = b''
-        package =pr.Package(fixed_token=0xabcd,reservered_token=0,D_LEN=len(data),device_type=1,profile_id=2,serial_number=3,client_id=4)
+        package =pr.Package(fixed_token=0xabcd, node_addr=0, data_len=len(data),profile_id=3,serial_num=4,client_id=5)
         result = package.produce(data)
-        self.assertEqual(result, b'\xcd\xab\x00\x00\x00\x01\x02\x00\x03\x04b')
+        self.assertEqual(b'\xcd\xab\x00\x00\x00\x03\x04\x05', result)
 
     def test_dynamic_sub_package(self):
         data = b''
-        package = pr.Sub_Package(fixed_token=0xcb,LEN=len(data),client_id=2,dest_addr=3,profile_id=4,serial_num=5)
+        package = pr.Sub_Package(fixed_token=0xcb, data_len=len(data),client_id=3, serial_num=4, profile_id=5)
         result = package.produce(data)
-        self.assertEqual(result,b'\xcb\x00\x02\x03\x00\x04\x05')
+        self.assertEqual(b'\xcb\x00\x03\x04\x05',result)
+
+    def test_dynamic_complete_package(self):
+        data = b''
+        result = pr.complete_package(node_addr=0,profile_id=3,serial_num=4,client_id=5,data=data)
+        print(result)
