@@ -7,7 +7,7 @@ import serial
 import serial.tools.list_ports
 import yaml
 from collections import OrderedDict
-
+import types
 __title__ = 'tempsampling'
 __version__ = '0.1.0'
 __build__ = 0x000100
@@ -115,7 +115,7 @@ class Sub_Protocol:
         return [v.value for v in self.header.values()]
 
     def produce_sub_package(self, LEN, client_id, dest_addr, profile_id, serial_num, DATA):
-        self._set_header(LEN,client_id,dest_addr,profile_id,serial_num)
+        self._set_header(LEN, client_id,dest_addr,profile_id,serial_num)
         complete_fmt = self.endian + self.header_fmt + f'{LEN}s'
         # 打包头、数据
         values_bytes = struct.pack(complete_fmt, *(self._get_header_content()), DATA)
@@ -136,12 +136,6 @@ class Sub_Protocol:
     def get_sub_protocol(cls):
         return cls._instance if cls._instance else cls()
 
-class Package:
-    '''
-    此类由Protocol类创造，可创建多个
-    '''
-    def __init__(self,*args, **kwargs):
-        pass
 
 class _Protocol:
     # TODO: 该类应该可以动态生成
@@ -157,7 +151,7 @@ class _Protocol:
         self.reservered_token = ProtocolParamAttribute(2, 'H', 0x0000)
         self.D_LEN = ProtocolParamAttribute(3, 'B', None)
         self.device_type = ProtocolParamAttribute(4, 'B', None)
-        self.message_id = ProtocolParamAttribute(5, 'H', None)
+        self.profile_id = ProtocolParamAttribute(5, 'H', None)
         self.serial_number = ProtocolParamAttribute(6, 'B', None)
         self.client_id = ProtocolParamAttribute(7, 'B', None)
 
@@ -169,51 +163,7 @@ class _Protocol:
 
         self.header_fmt = ''.join(c.fmt for c in self.header.values())
         self.header_fmt_size = sum({'B': 1, 'H': 2, 'I': 4}[c.fmt] for c in self.header.values())
-        self.data = None
-        self.check = None
-        self._endian = '<'
-        self.got_content = 0
-
-    def _get_header_content(self):
-        return [v.value for v in self.header.values()]
-
-    def _set_header(self, D_LEN, device_type, message_id, serial_number, client_id):
-        kwargs = locals()
-        kwargs.pop('self')
-        for var, value in kwargs.items():
-            self.header[var].value = value
-        # self.protocol_content['D_LEN'].value = D_LEN
-        # self.protocol_content['device_type'].value = device_type
-        # self.protocol_content['message_id'].value = message_id
-        # self.protocol_content['serial_number'].value = serial_number
-        # self.protocol_content['client_id'].value = client_id
-        # self.protocol_content['DATA'].value = DATA
-
-    def produce_package(self, D_LEN, device_type, message_id, serial_number, client_id, DATA):
-        if not isinstance(DATA, bytes):
-            raise Exception('argument DATA must be a bytes object')
-        self._set_header(D_LEN, device_type, message_id, serial_number, client_id)
-
-        complete_fmt = self._endian + self.header_fmt + f'{D_LEN}s'
-        # 打包头、数据
-        values_bytes = struct.pack(complete_fmt, *(self._get_header_content()), DATA)
-        # 打包校验码
-        check_byte = struct.pack(f'{self._endian}B', check(values_bytes))
-
-        return values_bytes+check_byte
-
-    def get_header_content(self, acquired_bytes):
-        fixed_token,\
-        reservered_token,\
-        D_LEN, \
-        device_type,\
-        message_id,\
-        serial_number,\
-        client_id = struct.unpack_from(self._endian+self.header_fmt, acquired_bytes)
-
-        data_check_fmt = f'{self._endian}{D_LEN}sB'
-        data, check = struct.unpack_from(data_check_fmt, acquired_bytes, offset=self.header_fmt_size)
-        return data, check
+        self.endian = '<'
 
     @staticmethod
     def _get_protocol_from_file(path):
@@ -225,15 +175,8 @@ class _Protocol:
             else:
                 return protocol_dict
 
-    def _write_protocol_content(self):
-        pass
-
-    def get_endian(self):
-        return self._endian
-
     @classmethod
     def get_protocol(cls):
-
         return cls._instance if cls._instance else cls()
 
 def check(buf):
@@ -244,6 +187,55 @@ def check(buf):
 
 sub_protocol = Sub_Protocol.get_sub_protocol()
 protocol = _Protocol.get_protocol()
+
+
+
+
+def package_init(self, **kwargs):
+    print(self.__slot__)
+    print(kwargs)
+    for parameter, value in kwargs.items():
+        if parameter in self.__slot__:
+            setattr(self, parameter, value)
+        else:
+            raise Exception("invalid keyword arguments")
+
+    self.package_value_list = kwargs.values()
+
+def package_produce(self, DATA):
+    complete_fmt = protocol.endian + protocol.header_fmt + f'{self.D_LEN}s'
+    # 打包头、数据
+    values_bytes = struct.pack(complete_fmt, *self.package_value_list, DATA)
+    # 打包校验码
+    check_byte = struct.pack(f'{protocol.endian}B', check(values_bytes))
+
+    return values_bytes + check_byte
+
+def package_parse(self):
+    pass
+
+
+Package = type('Package', (object,), {'__slot__': tuple(v for v in protocol.header.keys()),
+                                      '__init__': package_init,
+                                      'produce': package_produce,
+                                      'parse': package_parse}
+               )
+
+def sub_package_produce(self, DATA):
+    complete_fmt = sub_protocol.endian + sub_protocol.header_fmt + f'{self.LEN}s'
+    # 打包头、数据
+    values_bytes = struct.pack(complete_fmt, *self.package_value_list, DATA)
+    # 打包校验码
+    return values_bytes
+
+def sub_package_parse(self):
+    pass
+
+Sub_Package = type('Sub_Package', (object,),{'__slot__': tuple(v for v in sub_protocol.header.keys()),
+                                             '__init__': package_init,
+                                             'produce': sub_package_produce,
+                                             'parse': sub_package_parse}
+                   )
 
 def complete_package(device_type,profile_id,serial_num,client_id,dest_addr,Data):
     if not isinstance(Data, bytes):
@@ -256,6 +248,7 @@ def complete_package(device_type,profile_id,serial_num,client_id,dest_addr,Data)
 def parse_package(package):
     protocol.get_header_content(package)
     pass
+
 def detect_serial_port():
     port_list = find_serial_port_list()
     if port_list:
