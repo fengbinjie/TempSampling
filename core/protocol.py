@@ -25,87 +25,130 @@ class ProtocolParamAttribute:
         self.default_value = default_value
 
 
-class SubProtocol:
-    _instance = None
-    # TODO:使用某种有次序存储形式，由此来反射生成元祖
-    __slots__ = ('fixed_token', 'data_len', 'profile_id', 'serial_num','client_id', 'header', 'header_fmt',
-                 'header_fmt_size', 'endian')
-
+def get_protocol_method(protocol_type):
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
+            # 笔记： super()方法在类的方法中使用可以省略参数而在函数外面必须填写参数
+            cls._instance = super(object, cls).__new__(cls)
         return cls._instance
 
     def __init__(self):
-        self.fixed_token = ProtocolParamAttribute('B')
-        self.data_len = ProtocolParamAttribute('B')
-        self.profile_id = ProtocolParamAttribute('B')
-        self.serial_num = ProtocolParamAttribute('B')
-        self.client_id = ProtocolParamAttribute('B')
-        self.fixed_token.set_default_value(0xcb)
-        self.header = OrderedDict()
-
-        for var in self.__slots__:
-            try:
-                value = getattr(self, var)
-            except:
-                pass
-            else:
-                if isinstance(value, ProtocolParamAttribute):
-                    self.header[var] = value
-
+        for field, fmt in protocol_type.items():
+            self.field = ProtocolParamAttribute(fmt)
+        self.header = protocol_type.copy()
         self.header_fmt = ''.join(c.fmt for c in self.header.values())
-        self.header_fmt_size = struct.calcsize(''.join([c.fmt for c in self.header.values()]))
-        self.endian = '<'
-
-
-    @classmethod
-    def get_sub_protocol(cls):
-        return cls._instance if cls._instance else cls()
-
-
-class Protocol:
-    # TODO: 该类应该可以动态生成
-    _instance = None
-    __slots__ = ('fixed_token', 'node_addr', 'data_len', 'profile_id', 'serial_num', 'client_id', 'header',
-                 'header_fmt', 'header_fmt_size', 'endian')
-
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def __init__(self):
-        self.fixed_token = ProtocolParamAttribute('H')
-        self.node_addr = ProtocolParamAttribute('H')
-        self.data_len = ProtocolParamAttribute('B')
-        self.profile_id = ProtocolParamAttribute('B')
-        self.serial_num = ProtocolParamAttribute('B')
-        self.client_id = ProtocolParamAttribute('B')
-
-        self.fixed_token.set_default_value(0xabcd)
-
-        # 将所有协议头格式存在header_content顺序字典中
-        self.header = OrderedDict()
-        # TODO: 对header中的项按照ProtocolParamAttribute.index顺序进行排序
-        for var in self.__slots__:
-            try:
-                value = getattr(self, var)
-            except:
-                pass
-            else:
-                if isinstance(value, ProtocolParamAttribute):
-                    self.header[var] = value
-
-
-        self.header_fmt = ''.join(c.fmt for c in self.header.values())
-        # 协议头数据格式尺寸
         self.header_fmt_size = struct.calcsize(''.join([c.fmt for c in self.header.values()]))
         self.endian = '<'
 
     @classmethod
     def get_protocol(cls):
         return cls._instance if cls._instance else cls()
+    return __new__, __init__, get_protocol
+
+
+__new__, __init__, get_protocol = get_protocol_method(_SUB_PROTOCOL_PROPERTY)
+SubProtocol = type('SubProtocol', (object, ), {
+    '_instance': None,
+                                               '__new__':__new__,
+                                                '__init__': __init__,
+                                               'get_protocol': get_protocol
+
+
+
+})
+
+__new__, __init__, get_protocol = get_protocol_method(_BASIC_PROTOCOL_PROPERTY)
+Protocol = type('Protocol', (object, ), {
+    '_instance': None,
+                                               '__new__':__new__,
+                                                '__init__': __init__,
+                                                'get_protocol': get_protocol,
+
+
+
+})
+
+# class SubProtocol:
+#     _instance = None
+#     # TODO:使用某种有次序存储形式，由此来反射生成元祖
+#     __slots__ = ('fixed_token', 'data_len', 'profile_id', 'serial_num','client_id', 'header', 'header_fmt',
+#                  'header_fmt_size', 'endian')
+#
+#     def __new__(cls, *args, **kwargs):
+#         if cls._instance is None:
+#             cls._instance = super().__new__(cls)
+#         return cls._instance
+#
+#     def __init__(self):
+#         self.fixed_token = ProtocolParamAttribute('B')
+#         self.data_len = ProtocolParamAttribute('B')
+#         self.profile_id = ProtocolParamAttribute('B')
+#         self.serial_num = ProtocolParamAttribute('B')
+#         self.client_id = ProtocolParamAttribute('B')
+#         self.fixed_token.set_default_value(0xcb)
+#         self.header = OrderedDict()
+#
+#         for var in self.__slots__:
+#             try:
+#                 value = getattr(self, var)
+#             except:
+#                 pass
+#             else:
+#                 if isinstance(value, ProtocolParamAttribute):
+#                     self.header[var] = value
+#
+#         self.header_fmt = ''.join(c.fmt for c in self.header.values())
+#         self.header_fmt_size = struct.calcsize(''.join([c.fmt for c in self.header.values()]))
+#         self.endian = '<'
+#
+#
+#     @classmethod
+#     def get_sub_protocol(cls):
+#         return cls._instance if cls._instance else cls()
+#
+#
+# class Protocol:
+#     # TODO: 该类应该可以动态生成
+#     _instance = None
+#     __slots__ = ('fixed_token', 'node_addr', 'data_len', 'profile_id', 'serial_num', 'client_id', 'header',
+#                  'header_fmt', 'header_fmt_size', 'endian')
+#
+#     def __new__(cls, *args, **kwargs):
+#         if cls._instance is None:
+#             cls._instance = super().__new__(cls)
+#         return cls._instance
+#
+#     def __init__(self):
+#         self.fixed_token = ProtocolParamAttribute('H')
+#         self.node_addr = ProtocolParamAttribute('H')
+#         self.data_len = ProtocolParamAttribute('B')
+#         self.profile_id = ProtocolParamAttribute('B')
+#         self.serial_num = ProtocolParamAttribute('B')
+#         self.client_id = ProtocolParamAttribute('B')
+#
+#         self.fixed_token.set_default_value(0xabcd)
+#
+#         # 将所有协议头格式存在header_content顺序字典中
+#         self.header = OrderedDict()
+#         # TODO: 对header中的项按照ProtocolParamAttribute.index顺序进行排序
+#         for var in self.__slots__:
+#             try:
+#                 value = getattr(self, var)
+#             except:
+#                 pass
+#             else:
+#                 if isinstance(value, ProtocolParamAttribute):
+#                     self.header[var] = value
+#
+#
+#         self.header_fmt = ''.join(c.fmt for c in self.header.values())
+#         # 协议头数据格式尺寸
+#         self.header_fmt_size = struct.calcsize(''.join([c.fmt for c in self.header.values()]))
+#         self.endian = '<'
+#
+#     @classmethod
+#     def get_protocol(cls):
+#         return cls._instance if cls._instance else cls()
 
 
 
@@ -143,7 +186,7 @@ Package = type('Package', (object,), {'__slot__': tuple(v for v in protocol.head
                                       'parse': package_parse}
                )
 
-sub_protocol = SubProtocol.get_sub_protocol()
+sub_protocol = SubProtocol.get_protocol()
 package_init, package_produce, package_parse = get_package_methods(sub_protocol)
 SubPackage = type('SubPackage', (object,), {'__slot__': tuple(v for v in sub_protocol.header.keys()),
                                               '__init__': package_init,
@@ -152,9 +195,9 @@ SubPackage = type('SubPackage', (object,), {'__slot__': tuple(v for v in sub_pro
                   )
 
 
-def get_fields_method(protocol):
+def get_fields_method(protocol_type):
     def fields_init(self, package):
-        package_fmt = protocol.endian + protocol.header_fmt
+        package_fmt = protocol_type.endian + protocol_type.header_fmt
         for index, parameter in enumerate(struct.unpack_from(package_fmt, package)):
             setattr(self, self.__slots__[index], parameter)
     return fields_init
