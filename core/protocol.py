@@ -74,6 +74,7 @@ class _Protocol:
 
         # 将所有协议头格式存在header_content顺序字典中
         self.header = OrderedDict()
+        # TODO: 对header中的项按照ProtocolParamAttribute.index顺序进行排序
         for var in self.__slots__:
             try:
                 value = getattr(self, var)
@@ -85,6 +86,7 @@ class _Protocol:
 
 
         self.header_fmt = ''.join(c.fmt for c in self.header.values())
+        #TODO:使用struct.calsize方法计算
         self.header_fmt_size = sum({'B': 1, 'H': 2, 'I': 4}[c.fmt] for c in self.header.values())
         self.endian = '<'
 
@@ -98,6 +100,7 @@ class _Protocol:
 def get_package_methods(protocol):
 
     def package_init(self, **kwargs):
+        #TODO:改用self.__slots__来赋值
         for parameter, value in kwargs.items():
             if parameter in self.__slot__:
                 setattr(self, parameter, value)
@@ -119,7 +122,7 @@ def get_package_methods(protocol):
     return package_init, package_produce, package_parse
 
 
-protocol = _Protocol.get_protocol()
+protocol = Protocol.get_protocol()
 package_init, package_produce, package_parse = get_package_methods(protocol)
 Package = type('Package', (object,), {'__slot__': tuple(v for v in protocol.header.keys()),
                                       '__init__': package_init,
@@ -127,24 +130,24 @@ Package = type('Package', (object,), {'__slot__': tuple(v for v in protocol.head
                                       'parse': package_parse}
                )
 
-sub_protocol = Sub_Protocol.get_sub_protocol()
+sub_protocol = SubProtocol.get_sub_protocol()
 package_init, package_produce, package_parse = get_package_methods(sub_protocol)
-Sub_Package = type('Sub_Package', (object,), {'__slot__': tuple(v for v in sub_protocol.header.keys()),
+SubPackage = type('SubPackage', (object,), {'__slot__': tuple(v for v in sub_protocol.header.keys()),
                                               '__init__': package_init,
                                               'produce': package_produce,
                                               'parse': package_parse}
-                   )
+                  )
 
 
 def complete_package(node_addr, profile_id, serial_num, client_id, data):
     if not isinstance(data, bytes):
-        raise Exception("arguments is not a bytes")
+        raise Exception("data is not a bytes")
     # 此处参数的赋值顺序会影响包实例的打包值顺序
-    sub_package = Sub_Package(fixed_token=sub_protocol.fixed_token.default_value,
-                              data_len=len(data),
-                              profile_id=profile_id,
-                              serial_num=serial_num,
-                              client_id=client_id).produce(data)
+    sub_package = SubPackage(fixed_token=sub_protocol.fixed_token.default_value,
+                             data_len=len(data),
+                             profile_id=profile_id,
+                             serial_num=serial_num,
+                             client_id=client_id).produce(data)
 
     package = Package(fixed_token=protocol.fixed_token.default_value,
                       node_addr=0,
@@ -154,6 +157,7 @@ def complete_package(node_addr, profile_id, serial_num, client_id, data):
                       client_id=client_id).produce(sub_package)
 
     check_num = pack_check_num(package)
+    #TODO: check应该在串口发送前计算
     return package+check_num
 
 
