@@ -42,7 +42,7 @@ class SubProtocol:
                     self.header[var] = value
 
         self.header_fmt = ''.join(c.fmt for c in self.header.values())
-        self.header_fmt_size = sum({'B': 1, 'H': 2, 'I': 4}[c.fmt] for c in self.header.values())
+        self.header_fmt_size = struct.calcsize(''.join([c.fmt for c in self.header.values()]))
         self.endian = '<'
 
 
@@ -86,8 +86,8 @@ class Protocol:
 
 
         self.header_fmt = ''.join(c.fmt for c in self.header.values())
-        #TODO:使用struct.calsize方法计算
-        self.header_fmt_size = sum({'B': 1, 'H': 2, 'I': 4}[c.fmt] for c in self.header.values())
+        # 协议头数据格式尺寸
+        self.header_fmt_size = struct.calcsize(''.join([c.fmt for c in self.header.values()]))
         self.endian = '<'
 
     @classmethod
@@ -106,7 +106,7 @@ def get_package_methods(protocol):
                 setattr(self, parameter, value)
             else:
                 raise Exception("invalid keyword arguments")
-
+        # 赋值顺序影响列表顺序，从而影响打包顺序
         self.package_value_list = kwargs.values()
 
     def package_produce(self, data):
@@ -168,15 +168,15 @@ def complete_package(node_addr, profile_id, serial_num, client_id, data):
                              client_id=client_id).produce(data)
 
     package = Package(fixed_token=protocol.fixed_token.default_value,
-                      node_addr=0,
+                      node_addr=node_addr,
                       data_len=len(sub_package),
                       profile_id=profile_id,
                       serial_num=serial_num,
                       client_id=client_id).produce(sub_package)
 
-    check_num = pack_check_num(package)
+    #check_num = pack_check_num(package)
     #TODO: check应该在串口发送前计算
-    return package+check_num
+    return package
 
 
 def parse_package(package):
