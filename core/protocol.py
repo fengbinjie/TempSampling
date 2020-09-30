@@ -1,25 +1,25 @@
 from collections import OrderedDict
 import struct
 
-_BASIC_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', 'H'),
-                         ('node_addr', 'H'),
-                         ('data_len', 'B'),
-                         ('profile_id', 'B'),
-                         ('serial_num', 'B'),
-                         ('client_id', 'B')])
+_BASIC_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', {'default_value': 0xabcd, 'fmt': 'H'}),
+                         ('node_addr', {'fmt': 'H'}),
+                         ('data_len', {'fmt': 'B'}),
+                         ('profile_id', {'fmt': 'B'}),
+                         ('serial_num', {'fmt': 'B'}),
+                         ('client_id', {'fmt': 'B'})])
 
-_SUB_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', 'B'),
-                       ('data_len', 'B'),
-                       ('profile_id', 'B'),
-                       ('serial_num', 'B'),
-                       ('client_id', 'B')])
+_SUB_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', {'default_value': 0xcb, 'fmt': 'B'}),
+                       ('data_len', {'fmt': 'B'}),
+                       ('profile_id', {'fmt': 'B'}),
+                       ('serial_num', {'fmt': 'B'}),
+                       ('client_id', {'fmt': 'B'})])
 
 
 class ProtocolParamAttribute:
     __slots__ = ('fmt', 'default_value')
 
     def __init__(self, fmt):
-        self.fmt, self.default_value = fmt, None
+        self.fmt = fmt
 
     def set_default_value(self, default_value):
         self.default_value = default_value
@@ -28,14 +28,24 @@ class ProtocolParamAttribute:
 def get_protocol_method(protocol_type):
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
+            print(super(cls,cls))
+            print(super(cls, cls).__new__)
             # 笔记： super()方法在类的方法中使用可以省略参数而在函数外面必须填写参数
-            cls._instance = super(object, cls).__new__(cls)
+            # 笔记： 为什么是super(cls,cls）呢而不是super(object,cls)
+            cls._instance = super(cls, cls).__new__(cls)
         return cls._instance
 
     def __init__(self):
-        for field, fmt in protocol_type.items():
-            self.field = ProtocolParamAttribute(fmt)
-        self.header = protocol_type.copy()
+        self.header = OrderedDict()
+        for field, property in protocol_type.items():
+            parameter = ProtocolParamAttribute(property.get('fmt'))
+            default_value = property.get('default_value')
+            if default_value:
+                parameter.set_default_value(default_value)
+            setattr(self, field, parameter)
+
+            self.header[field] = parameter
+
         self.header_fmt = ''.join(c.fmt for c in self.header.values())
         self.header_fmt_size = struct.calcsize(''.join([c.fmt for c in self.header.values()]))
         self.endian = '<'
@@ -47,7 +57,7 @@ def get_protocol_method(protocol_type):
 
 
 __new__, __init__, get_protocol = get_protocol_method(_SUB_PROTOCOL_PROPERTY)
-SubProtocol = type('SubProtocol', (object, ), {
+SubProtocol = type('SubProtocol', (), {
     '_instance': None,
                                                '__new__':__new__,
                                                 '__init__': __init__,
@@ -58,7 +68,7 @@ SubProtocol = type('SubProtocol', (object, ), {
 })
 
 __new__, __init__, get_protocol = get_protocol_method(_BASIC_PROTOCOL_PROPERTY)
-Protocol = type('Protocol', (object, ), {
+Protocol = type('Protocol', (), {
     '_instance': None,
                                                '__new__':__new__,
                                                 '__init__': __init__,
@@ -75,6 +85,8 @@ Protocol = type('Protocol', (object, ), {
 #                  'header_fmt_size', 'endian')
 #
 #     def __new__(cls, *args, **kwargs):
+#         print(super(object, cls))
+#         print(super(object, cls).__new__)
 #         if cls._instance is None:
 #             cls._instance = super().__new__(cls)
 #         return cls._instance
@@ -103,7 +115,7 @@ Protocol = type('Protocol', (object, ), {
 #
 #
 #     @classmethod
-#     def get_sub_protocol(cls):
+#     def get_protocol(cls):
 #         return cls._instance if cls._instance else cls()
 #
 #
@@ -180,7 +192,7 @@ def get_package_methods(protocol):
 
 protocol = Protocol.get_protocol()
 package_init, package_produce, package_parse = get_package_methods(protocol)
-Package = type('Package', (object,), {'__slot__': tuple(v for v in protocol.header.keys()),
+Package = type('Package', (), {'__slot__': tuple(v for v in protocol.header.keys()),
                                       '__init__': package_init,
                                       'produce': package_produce,
                                       'parse': package_parse}
@@ -188,7 +200,7 @@ Package = type('Package', (object,), {'__slot__': tuple(v for v in protocol.head
 
 sub_protocol = SubProtocol.get_protocol()
 package_init, package_produce, package_parse = get_package_methods(sub_protocol)
-SubPackage = type('SubPackage', (object,), {'__slot__': tuple(v for v in sub_protocol.header.keys()),
+SubPackage = type('SubPackage', (), {'__slot__': tuple(v for v in sub_protocol.header.keys()),
                                               '__init__': package_init,
                                               'produce': package_produce,
                                               'parse': package_parse}
