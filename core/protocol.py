@@ -78,139 +78,62 @@ Protocol = type('Protocol', (), {
 
 })
 
-# class SubProtocol:
-#     _instance = None
-#     # TODO:使用某种有次序存储形式，由此来反射生成元祖
-#     __slots__ = ('fixed_token', 'data_len', 'profile_id', 'serial_num','client_id', 'header', 'header_fmt',
-#                  'header_fmt_size', 'endian')
-#
-#     def __new__(cls, *args, **kwargs):
-#         print(super(object, cls))
-#         print(super(object, cls).__new__)
-#         if cls._instance is None:
-#             cls._instance = super().__new__(cls)
-#         return cls._instance
-#
-#     def __init__(self):
-#         self.fixed_token = ProtocolParamAttribute('B')
-#         self.data_len = ProtocolParamAttribute('B')
-#         self.profile_id = ProtocolParamAttribute('B')
-#         self.serial_num = ProtocolParamAttribute('B')
-#         self.client_id = ProtocolParamAttribute('B')
-#         self.fixed_token.set_default_value(0xcb)
-#         self.header = OrderedDict()
-#
-#         for var in self.__slots__:
-#             try:
-#                 value = getattr(self, var)
-#             except:
-#                 pass
-#             else:
-#                 if isinstance(value, ProtocolParamAttribute):
-#                     self.header[var] = value
-#
-#         self.header_fmt = ''.join(c.fmt for c in self.header.values())
-#         self.header_fmt_size = struct.calcsize(''.join([c.fmt for c in self.header.values()]))
-#         self.endian = '<'
-#
-#
-#     @classmethod
-#     def get_protocol(cls):
-#         return cls._instance if cls._instance else cls()
-#
-#
-# class Protocol:
-#     # TODO: 该类应该可以动态生成
-#     _instance = None
-#     __slots__ = ('fixed_token', 'node_addr', 'data_len', 'profile_id', 'serial_num', 'client_id', 'header',
-#                  'header_fmt', 'header_fmt_size', 'endian')
-#
-#     def __new__(cls, *args, **kwargs):
-#         if cls._instance is None:
-#             cls._instance = super().__new__(cls)
-#         return cls._instance
-#
-#     def __init__(self):
-#         self.fixed_token = ProtocolParamAttribute('H')
-#         self.node_addr = ProtocolParamAttribute('H')
-#         self.data_len = ProtocolParamAttribute('B')
-#         self.profile_id = ProtocolParamAttribute('B')
-#         self.serial_num = ProtocolParamAttribute('B')
-#         self.client_id = ProtocolParamAttribute('B')
-#
-#         self.fixed_token.set_default_value(0xabcd)
-#
-#         # 将所有协议头格式存在header_content顺序字典中
-#         self.header = OrderedDict()
-#         # TODO: 对header中的项按照ProtocolParamAttribute.index顺序进行排序
-#         for var in self.__slots__:
-#             try:
-#                 value = getattr(self, var)
-#             except:
-#                 pass
-#             else:
-#                 if isinstance(value, ProtocolParamAttribute):
-#                     self.header[var] = value
-#
-#
-#         self.header_fmt = ''.join(c.fmt for c in self.header.values())
-#         # 协议头数据格式尺寸
-#         self.header_fmt_size = struct.calcsize(''.join([c.fmt for c in self.header.values()]))
-#         self.endian = '<'
-#
-#     @classmethod
-#     def get_protocol(cls):
-#         return cls._instance if cls._instance else cls()
-
-
-
 
 def get_package_methods(protocol):
 
     def package_init(self, **kwargs):
-        #TODO:改用self.__slots__来赋值
+        # 赋值顺序不影响值列表顺序打包顺序、因此关键词参数顺序不固定，但key必须与__slots__一致
         for parameter, value in kwargs.items():
-            if parameter in self.__slot__:
+            if parameter in self.__slots__:
                 setattr(self, parameter, value)
             else:
                 raise Exception("invalid keyword arguments")
-        # 赋值顺序影响列表顺序，从而影响打包顺序
-        self.package_value_list = kwargs.values()
+
+    def package_value_list(self):
+        # 改用self.__slots__来取值,由于self.__slots的顺序固定，因此值列表顺序确定，打包顺序确定
+        return [getattr(self, arg) for arg in self.__slots__]
+
 
     def package_produce(self, data):
         complete_fmt = protocol.endian + protocol.header_fmt + f'{self.data_len}s'
         # 打包头、数据
-        values_bytes = struct.pack(complete_fmt, *self.package_value_list, data)
+        values_bytes = struct.pack(complete_fmt, *self.package_value_list(), data)
 
         return values_bytes
 
     def package_parse(self):
         pass
 
-    return package_init, package_produce, package_parse
+    return package_init, package_produce, package_value_list, package_parse
 
 
 protocol = Protocol.get_protocol()
-package_init, package_produce, package_parse = get_package_methods(protocol)
-Package = type('Package', (), {'__slot__': tuple(v for v in protocol.header.keys()),
+package_init, package_produce, package_value_list, package_parse = get_package_methods(protocol)
+Package = type('Package', (), {'__slots__': tuple(v for v in protocol.header.keys()),
                                       '__init__': package_init,
                                       'produce': package_produce,
-                                      'parse': package_parse}
+                                      'parse': package_parse,
+                               'package_value_list': package_value_list}
                )
 
 sub_protocol = SubProtocol.get_protocol()
-package_init, package_produce, package_parse = get_package_methods(sub_protocol)
-SubPackage = type('SubPackage', (), {'__slot__': tuple(v for v in sub_protocol.header.keys()),
+package_init, package_produce, package_value_list, package_parse = get_package_methods(sub_protocol)
+SubPackage = type('SubPackage', (), {'__slots__': tuple(v for v in sub_protocol.header.keys()),
                                               '__init__': package_init,
                                               'produce': package_produce,
-                                              'parse': package_parse}
+                                              'parse': package_parse,
+                                     'package_value_list': package_value_list}
                   )
 
 
 def get_fields_method(protocol_type):
     def fields_init(self, package):
+        # 解析得到包各个字段，然后顺序生成__slots中包含的的所有实例属性，并将字段的值赋值给实例属性
+        # 字段顺序和slots中字段顺序一致
         package_fmt = protocol_type.endian + protocol_type.header_fmt
+        # 按顺序
         for index, parameter in enumerate(struct.unpack_from(package_fmt, package)):
+            # 赋值属性
             setattr(self, self.__slots__[index], parameter)
     return fields_init
 
