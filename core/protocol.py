@@ -1,6 +1,19 @@
 from collections import OrderedDict
 import struct
 
+_BASIC_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', 'H'),
+                         ('node_addr', 'H'),
+                         ('data_len', 'B'),
+                         ('profile_id', 'B'),
+                         ('serial_num', 'B'),
+                         ('client_id', 'B')])
+
+_SUB_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', 'B'),
+                       ('data_len', 'B'),
+                       ('profile_id', 'B'),
+                       ('serial_num', 'B'),
+                       ('client_id', 'B')])
+
 
 class ProtocolParamAttribute:
     __slots__ = ('index', 'fmt', 'default_value')
@@ -24,11 +37,11 @@ class SubProtocol:
         return cls._instance
 
     def __init__(self):
-        self.fixed_token = ProtocolParamAttribute(1, 'B')
-        self.data_len = ProtocolParamAttribute(2, 'B')
-        self.profile_id = ProtocolParamAttribute(3, 'B')
-        self.serial_num = ProtocolParamAttribute(4, 'B')
-        self.client_id = ProtocolParamAttribute(5, 'B')
+        self.fixed_token = ProtocolParamAttribute('B')
+        self.data_len = ProtocolParamAttribute('B')
+        self.profile_id = ProtocolParamAttribute('B')
+        self.serial_num = ProtocolParamAttribute('B')
+        self.client_id = ProtocolParamAttribute('B')
         self.fixed_token.set_default_value(0xcb)
         self.header = OrderedDict()
 
@@ -63,12 +76,12 @@ class Protocol:
         return cls._instance
 
     def __init__(self):
-        self.fixed_token = ProtocolParamAttribute(1, 'H')
-        self.node_addr = ProtocolParamAttribute(2, 'H')
-        self.data_len = ProtocolParamAttribute(3, 'B')
-        self.profile_id = ProtocolParamAttribute(4, 'B')
-        self.serial_num = ProtocolParamAttribute(5, 'B')
-        self.client_id = ProtocolParamAttribute(6, 'B')
+        self.fixed_token = ProtocolParamAttribute('H')
+        self.node_addr = ProtocolParamAttribute('H')
+        self.data_len = ProtocolParamAttribute('B')
+        self.profile_id = ProtocolParamAttribute('B')
+        self.serial_num = ProtocolParamAttribute('B')
+        self.client_id = ProtocolParamAttribute('B')
 
         self.fixed_token.set_default_value(0xabcd)
 
