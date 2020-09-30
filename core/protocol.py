@@ -16,10 +16,10 @@ _SUB_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', 'B'),
 
 
 class ProtocolParamAttribute:
-    __slots__ = ('index', 'fmt', 'default_value')
+    __slots__ = ('fmt', 'default_value')
 
-    def __init__(self, index, fmt):
-        self.index, self.fmt, self.default_value = index, fmt, None
+    def __init__(self, fmt):
+        self.fmt, self.default_value = fmt, None
 
     def set_default_value(self, default_value):
         self.default_value = default_value
