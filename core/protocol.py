@@ -138,20 +138,22 @@ Sub_Package = type('Sub_Package', (object,), {'__slot__': tuple(v for v in sub_p
 def complete_package(node_addr, profile_id, serial_num, client_id, data):
     if not isinstance(data, bytes):
         raise Exception("arguments is not a bytes")
+    # 此处参数的赋值顺序会影响包实例的打包值顺序
     sub_package = Sub_Package(fixed_token=sub_protocol.fixed_token.default_value,
                               data_len=len(data),
-                              client_id=client_id,
+                              profile_id=profile_id,
                               serial_num=serial_num,
-                              profile_id=profile_id).produce(data)
+                              client_id=client_id).produce(data)
 
     package = Package(fixed_token=protocol.fixed_token.default_value,
-                          node_addr=0,
-                          data_len=len(sub_package),
-                          profile_id=profile_id,
-                          serial_num=serial_num,
-                          client_id=client_id).produce(sub_package)
-# TODO: 改变次序使client_id,serial_num,profile_id一样
-    return package
+                      node_addr=0,
+                      data_len=len(sub_package),
+                      profile_id=profile_id,
+                      serial_num=serial_num,
+                      client_id=client_id).produce(sub_package)
+
+    check_num = pack_check_num(package)
+    return package+check_num
 
 
 def check(buf):

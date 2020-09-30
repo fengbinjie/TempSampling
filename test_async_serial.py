@@ -49,4 +49,4 @@ class AsyncSerialTestSuite(unittest.TestCase):
     def test_dynamic_complete_package(self):
         data = b''
         result = pr.complete_package(node_addr=0,profile_id=3,serial_num=4,client_id=5,data=data)
-        print(result)
+        self.assertEqual(b'\xcd\xab\x00\x00\x05\x03\x04\x05\xcb\x00\x03\x04\x05\xa8', result)
