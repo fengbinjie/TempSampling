@@ -14,7 +14,8 @@ class ProtocolParamAttribute:
 
 class Sub_Protocol:
     _instance = None
-    __slots__ = ('fixed_token', 'data_len', 'client_id', 'serial_num', 'profile_id', 'header', 'header_fmt',
+    # TODO:使用某种有次序存储形式，由此来反射生成元祖
+    __slots__ = ('fixed_token', 'data_len', 'profile_id', 'serial_num','client_id', 'header', 'header_fmt',
                  'header_fmt_size', 'endian')
 
     def __new__(cls, *args, **kwargs):
