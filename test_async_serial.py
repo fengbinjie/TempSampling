@@ -53,3 +53,22 @@ class AsyncSerialTestSuite(unittest.TestCase):
         data = b''
         result = pr.complete_package(node_addr=0, profile_id=3, serial_num=4, client_id=5, data=data)
         self.assertEqual(b'\xcd\xab\x00\x00\x05\x03\x04\x05\xcb\x00\x03\x04\x05\xa8', result)
+
+    def test_dynamic_parse_package(self):
+        reversed_package, reversed_sub_package, data = pr.parse_package(
+            b'\xcd\xab\x00\x00\x05\x03\x04\x05\xcb\x00\x03\x04\x05\xa8')
+
+        self.assertEqual(0xabcd, reversed_package.fixed_token)
+        self.assertEqual(0, reversed_package.node_addr)
+        self.assertEqual(pr.sub_protocol.header_fmt_size, reversed_package.data_len, )
+        self.assertEqual(3, reversed_package.profile_id)
+        self.assertEqual(4, reversed_package.serial_num)
+        self.assertEqual(5, reversed_package.client_id)
+
+        self.assertEqual(0xcb, reversed_sub_package.fixed_token)
+        self.assertEqual(len(data), reversed_sub_package.data_len)
+        self.assertEqual(3, reversed_sub_package.profile_id)
+        self.assertEqual(4, reversed_sub_package.serial_num)
+        self.assertEqual(5, reversed_sub_package.client_id)
+
+        self.assertEqual(0, len(data))

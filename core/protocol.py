@@ -12,7 +12,7 @@ class ProtocolParamAttribute:
         self.default_value = default_value
 
 
-class Sub_Protocol:
+class SubProtocol:
     _instance = None
     # TODO:使用某种有次序存储形式，由此来反射生成元祖
     __slots__ = ('fixed_token', 'data_len', 'profile_id', 'serial_num','client_id', 'header', 'header_fmt',
@@ -51,7 +51,7 @@ class Sub_Protocol:
         return cls._instance if cls._instance else cls()
 
 
-class _Protocol:
+class Protocol:
     # TODO: 该类应该可以动态生成
     _instance = None
     __slots__ = ('fixed_token', 'node_addr', 'data_len', 'profile_id', 'serial_num', 'client_id', 'header',
@@ -139,6 +139,24 @@ SubPackage = type('SubPackage', (object,), {'__slot__': tuple(v for v in sub_pro
                   )
 
 
+def get_fields_method(protocol):
+    def fields_init(self, package):
+        package_fmt = protocol.endian + protocol.header_fmt
+        for index, parameter in enumerate(struct.unpack_from(package_fmt, package)):
+            setattr(self, self.__slots__[index], parameter)
+    return fields_init
+
+
+fields_init = get_fields_method(protocol)
+ReversePackage = type('ReversePackage',(object,),{'__slots__': tuple(v for v in protocol.header.keys()),
+                                                   '__init__': fields_init}
+                      )
+
+fields_init = get_fields_method(sub_protocol)
+ReverseSubPackage = type('ReverseSubPackage',(object,),{'__slots__': tuple(v for v in sub_protocol.header.keys()),
+                                                        '__init__': fields_init}
+                         )
+
 def complete_package(node_addr, profile_id, serial_num, client_id, data):
     if not isinstance(data, bytes):
         raise Exception("data is not a bytes")
@@ -159,6 +177,19 @@ def complete_package(node_addr, profile_id, serial_num, client_id, data):
     check_num = pack_check_num(package)
     #TODO: check应该在串口发送前计算
     return package+check_num
+
+
+def parse_package(package):
+    if not isinstance(package,bytes):
+        raise Exception("package is not a bytes")
+    reverse_package = ReversePackage(package)
+    reverse_sub_package = None
+    data = b''
+    if reverse_package.data_len > 0:
+        reverse_sub_package = ReverseSubPackage(package[protocol.header_fmt_size:])
+        if reverse_sub_package.data_len > 0:
+            data = package[protocol.header_fmt_size+sub_protocol.header_fmt_size:]
+    return reverse_package, reverse_sub_package, data
 
 
 def check(buf):
