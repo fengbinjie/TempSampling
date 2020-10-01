@@ -7,7 +7,6 @@ _BASIC_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', {'default_value': 0xabcd
                          ('profile_id', {'fmt': 'B'}),
                          ('serial_num', {'fmt': 'B'}),
                          ('client_id', {'fmt': 'B'})])
-
 _SUB_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', {'default_value': 0xcb, 'fmt': 'B'}),
                        ('data_len', {'fmt': 'B'}),
                        ('profile_id', {'fmt': 'B'}),
@@ -25,19 +24,20 @@ class ProtocolParamAttribute:
         self.default_value = default_value
 
 
-def get_protocol_method(protocol_type):
+def create_class_protocol(protocol_name, protocol_fields):
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            print(super(cls,cls))
-            print(super(cls, cls).__new__)
+            print(cls.__name__)
+            print(help(super(cls, cls)))
+            print(super(object, cls))
             # 笔记： super()方法在类的方法中使用可以省略参数而在函数外面必须填写参数
-            # 笔记： 为什么是super(cls,cls）呢而不是super(object,cls)
+            # 笔记： super(cls,cls）调用父类的正确方法而不是super(object,cls)
             cls._instance = super(cls, cls).__new__(cls)
         return cls._instance
 
     def __init__(self):
         self.header = OrderedDict()
-        for field, property in protocol_type.items():
+        for field, property in protocol_fields.items():
             parameter = ProtocolParamAttribute(property.get('fmt'))
             default_value = property.get('default_value')
             if default_value:
@@ -53,33 +53,15 @@ def get_protocol_method(protocol_type):
     @classmethod
     def get_protocol(cls):
         return cls._instance if cls._instance else cls()
-    return __new__, __init__, get_protocol
+    return type(protocol_name, (), {
+         '_instance': None,
+         '__new__': __new__,
+         '__init__': __init__,
+         'get_protocol': get_protocol
+     })
 
 
-__new__, __init__, get_protocol = get_protocol_method(_SUB_PROTOCOL_PROPERTY)
-SubProtocol = type('SubProtocol', (), {
-    '_instance': None,
-                                               '__new__':__new__,
-                                                '__init__': __init__,
-                                               'get_protocol': get_protocol
-
-
-
-})
-
-__new__, __init__, get_protocol = get_protocol_method(_BASIC_PROTOCOL_PROPERTY)
-Protocol = type('Protocol', (), {
-    '_instance': None,
-                                               '__new__':__new__,
-                                                '__init__': __init__,
-                                                'get_protocol': get_protocol,
-
-
-
-})
-
-
-def get_package_methods(protocol):
+def create_class_package(package_name, protocol_type):
 
     def package_init(self, **kwargs):
         # 赋值顺序不影响值列表顺序打包顺序、因此关键词参数顺序不固定，但key必须与__slots__一致
@@ -95,7 +77,7 @@ def get_package_methods(protocol):
 
 
     def package_produce(self, data):
-        complete_fmt = protocol.endian + protocol.header_fmt + f'{self.data_len}s'
+        complete_fmt = protocol_type.endian + protocol_type.header_fmt + f'{self.data_len}s'
         # 打包头、数据
         values_bytes = struct.pack(complete_fmt, *self.package_value_list(), data)
 
@@ -104,29 +86,15 @@ def get_package_methods(protocol):
     def package_parse(self):
         pass
 
-    return package_init, package_produce, package_value_list, package_parse
-
-
-protocol = Protocol.get_protocol()
-package_init, package_produce, package_value_list, package_parse = get_package_methods(protocol)
-Package = type('Package', (), {'__slots__': tuple(v for v in protocol.header.keys()),
+    return type(package_name, (), {'__slots__': tuple(v for v in protocol_type.header.keys()),
                                       '__init__': package_init,
                                       'produce': package_produce,
                                       'parse': package_parse,
                                'package_value_list': package_value_list}
                )
 
-sub_protocol = SubProtocol.get_protocol()
-package_init, package_produce, package_value_list, package_parse = get_package_methods(sub_protocol)
-SubPackage = type('SubPackage', (), {'__slots__': tuple(v for v in sub_protocol.header.keys()),
-                                              '__init__': package_init,
-                                              'produce': package_produce,
-                                              'parse': package_parse,
-                                     'package_value_list': package_value_list}
-                  )
 
-
-def get_fields_method(protocol_type):
+def create_class_fields(fields_name, protocol_type):
     def fields_init(self, package):
         # 解析得到包各个字段，然后顺序生成__slots中包含的的所有实例属性，并将字段的值赋值给实例属性
         # 字段顺序和slots中字段顺序一致
@@ -135,18 +103,27 @@ def get_fields_method(protocol_type):
         for index, parameter in enumerate(struct.unpack_from(package_fmt, package)):
             # 赋值属性
             setattr(self, self.__slots__[index], parameter)
-    return fields_init
-
-
-fields_init = get_fields_method(protocol)
-ReversePackage = type('ReversePackage',(object,),{'__slots__': tuple(v for v in protocol.header.keys()),
+    return type(fields_name,(object,),{'__slots__': tuple(v for v in protocol_type.header.keys()),
                                                    '__init__': fields_init}
                       )
 
-fields_init = get_fields_method(sub_protocol)
-ReverseSubPackage = type('ReverseSubPackage',(object,),{'__slots__': tuple(v for v in sub_protocol.header.keys()),
-                                                        '__init__': fields_init}
-                         )
+
+# 创建子协议类、该类为协议模板且是单例
+SubProtocol = create_class_protocol('SubProtocol', _SUB_PROTOCOL_PROPERTY)
+# 创建协议类、该类为协议模板且是单例
+Protocol = create_class_protocol('Protocol', _BASIC_PROTOCOL_PROPERTY)
+
+protocol = Protocol.get_protocol()
+sub_protocol = SubProtocol.get_protocol()
+# 创建包类,根据模板来创建，字段来自协议类
+Package = create_class_package('Package', protocol)
+# 创建子包类，根据模板来创建，字段来自子协议类
+SubPackage = create_class_package('SubPackage', sub_protocol)
+# 创建字段类,包含的字段为协议类中的字段
+Fields = create_class_fields('Fields', protocol)
+# 创建子字段类，包含的字段为子协议类中的字段
+SubFields = create_class_fields('SubFields', sub_protocol)
+
 
 def complete_package(node_addr, profile_id, serial_num, client_id, data):
     if not isinstance(data, bytes):
@@ -173,11 +150,11 @@ def complete_package(node_addr, profile_id, serial_num, client_id, data):
 def parse_package(package):
     if not isinstance(package,bytes):
         raise Exception("package is not a bytes")
-    reverse_package = ReversePackage(package)
+    reverse_package = Fields(package)
     reverse_sub_package = None
     data = b''
     if reverse_package.data_len > 0:
-        reverse_sub_package = ReverseSubPackage(package[protocol.header_fmt_size:])
+        reverse_sub_package = SubFields(package[protocol.header_fmt_size:])
         if reverse_sub_package.data_len > 0:
             data = package[protocol.header_fmt_size+sub_protocol.header_fmt_size:]
     return reverse_package, reverse_sub_package, data
