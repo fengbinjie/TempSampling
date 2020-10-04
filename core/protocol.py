@@ -1,17 +1,27 @@
 from collections import OrderedDict
 import struct
+import core
 
 _BASIC_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', {'default_value': 0xabcd, 'fmt': 'H'}),
                          ('node_addr', {'fmt': 'H'}),
                          ('data_len', {'fmt': 'B'}),
                          ('profile_id', {'fmt': 'B'}),
                          ('serial_num', {'fmt': 'B'}),
-                         ('client_id', {'fmt': 'B'})])
+                         ('client_id', {'fmt': 'B'})])\
+    if core.MECHANISM else OrderedDict([('fixed_token', {'default_value': 0xabcd, 'fmt': 'H'}),
+                         ('node_addr', {'fmt': 'H'}),
+                         ('data_len', {'fmt': 'B'}),
+                         ('profile_id', {'fmt': 'B'}),
+                         ('serial_num', {'fmt': 'B'})])
 _SUB_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', {'default_value': 0xcb, 'fmt': 'B'}),
                        ('data_len', {'fmt': 'B'}),
                        ('profile_id', {'fmt': 'B'}),
                        ('serial_num', {'fmt': 'B'}),
-                       ('client_id', {'fmt': 'B'})])
+                       ('client_id', {'fmt': 'B'})]) if core.MECHANISM else \
+    OrderedDict([('fixed_token', {'default_value': 0xcb, 'fmt': 'B'}),
+                       ('data_len', {'fmt': 'B'}),
+                       ('profile_id', {'fmt': 'B'}),
+                       ('serial_num', {'fmt': 'B'})])
 
 
 class ProtocolParamAttribute:
@@ -124,27 +134,46 @@ Fields = create_class_fields('Fields', protocol)
 # 创建子字段类，包含的字段为子协议类中的字段
 SubFields = create_class_fields('SubFields', sub_protocol)
 
+if core.MECHANISM:
+    def complete_package(node_addr, profile_id, serial_num, client_id, data):
+        if not isinstance(data, bytes):
+            raise Exception("data is not a bytes")
+        # 此处参数的赋值顺序会影响包实例的打包值顺序
+        sub_package = SubPackage(fixed_token=sub_protocol.fixed_token.default_value,
+                                 data_len=len(data),
+                                 profile_id=profile_id,
+                                 serial_num=serial_num,
+                                 client_id=client_id).produce(data)
 
-def complete_package(node_addr, profile_id, serial_num, client_id, data):
-    if not isinstance(data, bytes):
-        raise Exception("data is not a bytes")
-    # 此处参数的赋值顺序会影响包实例的打包值顺序
-    sub_package = SubPackage(fixed_token=sub_protocol.fixed_token.default_value,
-                             data_len=len(data),
-                             profile_id=profile_id,
-                             serial_num=serial_num,
-                             client_id=client_id).produce(data)
+        package = Package(fixed_token=protocol.fixed_token.default_value,
+                          node_addr=node_addr,
+                          data_len=len(sub_package),
+                          profile_id=profile_id,
+                          serial_num=serial_num,
+                          client_id=client_id).produce(sub_package)
 
-    package = Package(fixed_token=protocol.fixed_token.default_value,
-                      node_addr=node_addr,
-                      data_len=len(sub_package),
-                      profile_id=profile_id,
-                      serial_num=serial_num,
-                      client_id=client_id).produce(sub_package)
+        #check_num = pack_check_num(package)
+        #TODO: check应该在串口发送前计算
+        return package
+else:
+    def complete_package(node_addr, profile_id, serial_num, data):
+        if not isinstance(data, bytes):
+            raise Exception("data is not a bytes")
+        # 此处参数的赋值顺序会影响包实例的打包值顺序
+        sub_package = SubPackage(fixed_token=sub_protocol.fixed_token.default_value,
+                                 data_len=len(data),
+                                 profile_id=profile_id,
+                                 serial_num=serial_num).produce(data)
 
-    #check_num = pack_check_num(package)
-    #TODO: check应该在串口发送前计算
-    return package
+        package = Package(fixed_token=protocol.fixed_token.default_value,
+                          node_addr=node_addr,
+                          data_len=len(sub_package),
+                          profile_id=profile_id,
+                          serial_num=serial_num).produce(sub_package)
+
+        # check_num = pack_check_num(package)
+        # TODO: check应该在串口发送前计算
+        return package
 
 
 def parse_package(package):

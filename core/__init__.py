@@ -1,2 +1,3 @@
-print(__file__)
+
+MECHANISM = 1
 
