@@ -141,36 +141,62 @@ def setup(task_list):
 def main():
     parser = argparse.ArgumentParser(description=f'TempSampling {__version__} - TUXIHUOZAIGONGCHENG',
                                      prog='TempSampling')
-
-    parser.add_argument('-p',
-                        '--ports',
+    sub_parser =parser.add_subparsers()
+    #todo:help属性增加
+    port_parser = sub_parser.add_parser('port')
+    led_parser = sub_parser.add_parser('led')
+    # 获得所有串口
+    port_parser.add_argument('-l',
+                        '--list',
                         help='Show serial ports list',
                         dest='ports',
                         action='store_true'
                         )
-    parser.add_argument('-m',
-                        dest='mapping',
-                        help='Show all files and node mapping',
+    # 选择指定串口通信
+    port_parser.add_subparsers('-s',
+                               '--select',
+                               help='select this com to communicate',
+                               dest='select_port')
+    # 获得当前所有节点的灯语映射
+    led_parser.add_argument('-c',
+                        dest='current',
+                        help='Show current node-led mapping',
                         action='store_true'
                         )
+    # 获得保存的所有节点和灯语的映射
+    led_parser.add_argument('-a',
+                            dest='all',
+                            help='Show all node-led mapping',
+                            action='store_true'
+                            )
     parser.add_argument('--temp',
                         dest='server_start',
                         action='store_true',
                         help='Start Server'
                         )
     args = parser.parse_args()
-    if args.ports:
-        ports = serial.find_serial_port_list()
-        print(ports if ports else "there is no port")
-        return
-    if args.mapping:
-        pass
-        # TODO:补充映射文件节点的逻辑
-        return
+    led_args = led_parser.parse_args()
+    port_args = port_parser.parse_args()
+    # 温度采集任务开始
     if args.server_start:
         pass
-        # TODO开始循环采集温度任务
+        # TODO:开始循环采集温度任务
         global  TEMP_SAMPLING_FLAG
         TEMP_SAMPLING_FLAG = True
         temp_sampling()
 
+    if port_args.ports:
+        ports = serial.find_serial_port_list()
+        print(ports if ports else "there is no port")
+        return
+    if port_args.select_port:
+        port = port_args.select_port
+        # TODO:选择指定串口去通信
+
+    if led_args.current:
+        pass
+        # TODO:补充当前映射文件节点的逻辑
+        return
+    if led_args.all:
+        pass
+        # TODO:补充全部映射文件节点的逻辑
