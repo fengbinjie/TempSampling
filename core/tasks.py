@@ -3,7 +3,7 @@ import core.protocol as pr
 import yaml
 import threading
 import argparse
-
+import os
 
 __title__ = 'tempsampling'
 __version__ = '0.1.0'
@@ -13,6 +13,7 @@ __license__ = 'ISC'
 __copyright__ = 'Copyright 2020 Binjie Feng'
 
 NodeList = [] # 节点列表
+PROJECT_PATH = os.path.abspath('..')
 
 class NodeInfo:
     def __init__(self):
@@ -84,6 +85,27 @@ def serial_num_self_increasing():
     global SERIAL_NUM
     with lock:
         SERIAL_NUM += 1
+
+def led_node_mapping_exist():
+    if os.path.exists(os.path.join(PROJECT_PATH, '/led_node_mapping.yml')):
+        return True
+    else:
+        return False
+
+def load_led_node_mapping():
+    if led_node_mapping_exist():
+        return yaml.load(os.path.join(PROJECT_PATH, '/led_node_mapping.yml'), yaml.FullLoader)
+    else:
+        raise Exception('No led_node_mapping.yml')
+
+
+def check_led_exist(node_mac_addr):
+    if node_mac_addr:
+        led_dict = led_node_mapping_exist()
+        if node_mac_addr in led_dict.keys() and os.path.exists(led_dict[node_mac_addr]):
+            return True
+    return False
+
 # 循环采集温度任务
 def temp_sampling():
     while TEMP_SAMPLING_FLAG:
@@ -92,18 +114,30 @@ def temp_sampling():
             pr.complete_package(node_addr=node.short_addr, profile_id=0x21, serial_num=SERIAL_NUM, data=b'')
             serial_num_self_increasing()
 
-# 获得zigbee节点列表
+# 询问zigbee节点列表
 def get_nodes_info():
     pr.complete_package(node_addr=0x0000, profile_id=0x11, serial_num=SERIAL_NUM, data=b'')
     serial_num_self_increasing()
+
+
 NODE_LED_MAPPING = {}
 # is_live获得现存节点与led文件的映射 否则获得所有节点与led文件的映射
-def get_live_nodes_led_path(is_live=True):
+
+def get_live_nodes_led_path(is_alive=True):
         # 检查led_node_mapping文件是否存在
+        led_dict = load_led_node_mapping()
+        led_dict_keys = led_dict.keys()
         # 取出所有的值，yaml格式，键代表节点mac地址，值代表led文件地址
-        # 其中是否存在现存节点
-        # 以一个字典返回现存节点和文件地址
-        pass
+        if is_alive:
+            current_live_led_dict = {}
+            for node in NodeList:
+            # 其中是否存在现存节点
+                if node.mac_addr in led_dict_keys:
+            # 以一个字典返回现存节点和文件地址
+                    current_live_led_dict.update(led_dict.popitem())
+            return current_live_led_dict
+        else:
+            return led_dict
 
 
 def init_task(task,interval,run_num=None):
@@ -194,9 +228,13 @@ def main():
         # TODO:选择指定串口去通信
 
     if led_args.current:
-        pass
+        led_node_mapping = get_live_nodes_led_path()
+        # TODO:格式化输出
         # TODO:补充当前映射文件节点的逻辑
+        print(led_node_mapping)
         return
     if led_args.all:
-        pass
+        led_node_mapping = get_live_nodes_led_path(is_alive=False)
+        # TODO:格式化输出
+        print(led_node_mapping)
         # TODO:补充全部映射文件节点的逻辑
