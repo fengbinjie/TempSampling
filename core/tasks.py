@@ -37,7 +37,6 @@ recv_task_dict = {
     0x31
 }
 
-def get_
 def recived_data_process(command):
     first_4_bits = command & 0xf0
     second_4_bits = command & 0x0f
@@ -172,6 +171,14 @@ def setup(task_list):
 
 
     pass
+def set_tempsampling_flag():
+    global TEMP_SAMPLING_FLAG
+    TEMP_SAMPLING_FLAG = True
+
+def remove_tempsampling_flag():
+    global TEMP_SAMPLING_FLAG
+    TEMP_SAMPLING_FLAG = False
+
 def main():
     parser = argparse.ArgumentParser(description=f'TempSampling {__version__} - TUXIHUOZAIGONGCHENG',
                                      prog='TempSampling')
@@ -179,6 +186,7 @@ def main():
     #todo:help属性增加
     port_parser = sub_parser.add_parser('port')
     led_parser = sub_parser.add_parser('led')
+    temp_parser = sub_parser.add_parser('temp')
     # 获得所有串口
     port_parser.add_argument('-l',
                         '--list',
@@ -203,26 +211,37 @@ def main():
                             help='Show all node-led mapping',
                             action='store_true'
                             )
-    parser.add_argument('--temp',
-                        dest='server_start',
+    temp_parser.add_argument('--start',
+                        dest='temp_start',
                         action='store_true',
                         help='Start Server'
                         )
+    temp_parser.add_argument('--stop',
+                             dest='temp_stop',
+                             action='store_true',
+                             help='stop Server'
+                             )
+
     args = parser.parse_args()
     led_args = led_parser.parse_args()
     port_args = port_parser.parse_args()
+    temp_args = temp_parser.parse_args()
     # 温度采集任务开始
-    if args.server_start:
-        pass
+    if temp_args.temp_start:
         # TODO:开始循环采集温度任务
-        global  TEMP_SAMPLING_FLAG
-        TEMP_SAMPLING_FLAG = True
+        set_tempsampling_flag()
         temp_sampling()
-
+        return
+    # 停止采集任务
+    if temp_args.temp_stop:
+        remove_tempsampling_flag()
+        return
+    # 列出当前所有串口
     if port_args.ports:
         ports = serial.find_serial_port_list()
         print(ports if ports else "there is no port")
         return
+    # 选择指定串口去通信
     if port_args.select_port:
         port = port_args.select_port
         # TODO:选择指定串口去通信
