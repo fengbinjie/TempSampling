@@ -4,6 +4,7 @@ import yaml
 import threading
 import argparse
 import struct
+import logging
 import os
 
 __title__ = 'tempsampling'
@@ -13,11 +14,12 @@ __author__ = 'Binjie Feng'
 __license__ = 'ISC'
 __copyright__ = 'Copyright 2020 Binjie Feng'
 
-NodeList = [] # 节点列表
+NodeList = []  # 节点列表
 PROJECT_PATH = os.path.abspath('..')
-
-class NodeInfo:
-    def __init__(self):
+SERIAL_NUM = 0
+logger = logging.getLogger('asyncio')
+class Node:
+    def __init__(self, short_addr, mac_addr):
         self.short_addr = None
         self.mac_addr = None
         self.led_file_path = None
@@ -25,86 +27,60 @@ class NodeInfo:
     def get_led(self):
         return yaml.load(self.led_file_path,Loader=yaml.FullLoader)
 
-SERIAL_NUM = 0
-send_task_dict = {
-    # profile_id, 两位，保留0x00~0x0f,前一位代表任务类型，后一位代表任务子类型（接收,发送,...)
-        0x10: send_temp_sampling, # 节点地址的收发，节点退出
-        0x20: recv_addr_list,     # 温度信息的收发
-        0x30: led,                # led信息的收发
-}
-recv_task_dict = {
-    0x10: te,
-    0x20:
-    0x30
-}
-temp_recv_cluster ={
+def acquire_temperature(reverse_package, reverse_sub_package, data):
+    temperature = data / 10
+    logger.info("EndDevice {0:10} | temp{1:5} |count{2:5}".format(
+        hex(reverse_package.node_addr),
+        temperature
+        ))
 
+
+def confirm_led_setting(reverse_package, reverse_sub_package, data):
+
+    logger.info(f"{reverse_package.node_addr}LED已设置{data}")
+
+def new_node_join(reverse_package, reverse_sub_package, data):
+    #H:代表16位短地址，8B代表64位mac地址
+    fmt = "H8B"
+    # 该命令只有串口协议
+    mixed_addr_tuple = struct.unpack(f'{pr.sub_protocol.endian}{fmt}', data)
+    ext_addr = ' '.join([str(i) for i in mixed_addr_tuple[1:9]])
+    nwk_addr = mixed_addr_tuple[-1]
+    NodeList.append(Node(nwk_addr,ext_addr))
+    logger.warning(f"节点加入 {nwk_addr} | {ext_addr}")
+
+def get_node_list(reverse_package, reverse_sub_package, data):
+    # H:代表16位短地址，8B代表64位mac地址
+    fmt = "H8B"
+    # 该命令只有串口协议
+    fmt_len = struct.calcsize(fmt)
+    fmt = fmt * (reverse_sub_package.data_len // fmt_len)
+    mixed_addr_tuple = struct.unpack(f'{pr.sub_protocol.endian}{fmt}', data)
+
+    l_len = len(mixed_addr_tuple) // 9
+    mixed_addr_list = {}
+    for index in range(l_len):
+        nwk_addr = mixed_addr_tuple[9 * index]
+        ext_addr = ' '.join([str(i) for i in mixed_addr_tuple[index * 9 + 1:(index + 1) * 9]])
+        mixed_addr_list[nwk_addr] = ext_addr
+        NodeList.append(Node(nwk_addr, ext_addr))
+
+temp_recv_cluster ={
+    0x08: acquire_temperature
 }
 led_recv_cluster = {
-
+    0x08: confirm_led_setting
 }
 nodes_recv_cluster={
-
+    0x08: new_node_join,
+    0x09: get_node_list
 }
 recv_cluster={
     0x10:temp_recv_cluster,
     0x20:led_recv_cluster,
     0x30:nodes_recv_cluster
 }
-RECV_FUNC = None
-SEND_FUNC = None
-def get_recv_func(command):
-    if command == 0x10:
-        def recv_temp_msg_process(reverse_package, data):
-            temp = struct.pack(f'{len(data)}B', data)
-            print(reverse_package.node_addr, temp)
-        return recv_temp_msg_process
-    elif command == 0x20:
-        def recv_led_msg_process()
-    pass
 
-def get_send_func(command):
-    pass
-
-def recived_data_process(command):
-    first_4_bits = command & 0xf0
-    second_4_bits = command & 0x0f
-    if first_4_bits == 1:
-        if second_4_bits == 2:
-            # 地址列表收到
-            pass
-        elif second_4_bits == 3:
-            # 节点退出
-            pass
-
-def sent_data_process(command,data):
-    first_4_bits = command & 0xf0
-    second_4_bits = command & 0x0f
-    if first_4_bits == 1:
-        if second_4_bits == 1:
-            # 地址列表询问
-            return b''
-    if first_4_bits == 2:
-        if second_4_bits == 1:
-            # 温度信息询问
-            return b''
-
-
-def create_task(command):
-    global SERIAL_NUM
-    if command == 0x11:
-        SERIAL_NUM += 1
-        pr.complete_package(node_addr=0x0000, profile_id=0x11, serial_num=SERIAL_NUM, data=b'')
-    elif command == 0x21:
-        def temp_task(node_short_addr):
-            SERIAL_NUM += 1
-
-        return temp_task
-    elif command == 0x31:
-        def led_task(node):
-            SERIAL_NUM += 1
-            pr.complete_package(node_addr=node.short_addr, profile_id=0x31, serial_num=SERIAL_NUM, data=b'')
-        return led_task
 TEMP_SAMPLING_FLAG = False
 lock = threading.Lock()
 
@@ -133,10 +109,6 @@ def check_led_exist(node_mac_addr):
         if node_mac_addr in led_dict.keys() and os.path.exists(led_dict[node_mac_addr]):
             return True
     return False
-def recv_process(package):
-
-
-def recv_temp():
 
 # 循环采集温度任务
 def temp_sampling():

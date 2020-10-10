@@ -1,3 +1,5 @@
+import os
 
-MECHANISM = 1
+PROJECT_DIR = os.path.abspath('.')
+
 

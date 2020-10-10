@@ -1,0 +1,27 @@
+formatters:
+  time_formatter:
+    format: '%(asctime)s - %(name)s - %(pathname)s - %(lineno)d - %(levelname)s -
+      %(message)s'
+handlers:
+  consoleHandler:
+    class: logging.StreamHandler
+    formatter: time_formatter
+    level: DEBUG
+    stream: ext://sys.stdout
+  fileHandler:
+    backupCount: 3
+    class: logging.handlers.RotatingFileHandler
+    filename: ./log/server_log.log
+    formatter: time_formatter
+    level: DEBUG
+    maxBytes: 1000000000
+root:
+  handlers:
+  - consoleHandler
+  - fileHandler
+  level: DEBUG
+asyncio:
+  handlers:
+  - fileHandler
+  level: DEBUG
+version: 1
