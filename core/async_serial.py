@@ -1,28 +1,12 @@
-
 import contextlib
-import os
 import time
 import serial
 import serial.tools.list_ports
-import yaml
-
-
-
-DEFAULT_COM = None
-if os.name is 'nt':
-    DEFAULT_COM = ''
-elif os.name is 'posix':
-    DEFAULT_COM = '/dev/ttyAMA0'
-else:
-    raise Exception('unsupported system')
 
 
 class Com:
-    def __init__(self, url=DEFAULT_COM, baudrate=115200):
-        if url in find_serial_port_list():
-            self.com = serial.Serial()
-        else:
-            raise Exception("there is no such a port")
+    def __init__(self):
+        self.com = serial.Serial()
         self.receiveProgressStop = False
         self.sendProgressStop = False
         self.noFeedBackCount = 0
@@ -96,11 +80,88 @@ def open_file(path, mode='r'):
         file_handler.close()
         return
 
+class myaio_serial:
+    def __init__(self):
+        self.reader = None
+        self.writer = None
+        self.async_recv_msg_buf = None
+        self.async_send_msg_buf = None
+
+    async def initial(self, url, baudrate, async_recv_msg_buf, async_send_msg_buf):
+        self.reader, self.writer = await serial_asyncio.open_serial_connection(url=url, baudrate=baudrate)
+        self.async_recv_msg_buf = async_recv_msg_buf
+        self.async_send_msg_buf = async_send_msg_buf
+
+    async def send(self):
+        while True:
+            # 每当发送队列中有消息时就将其发送
+            msg = await self.async_send_msg_buf.get()
+            # 取出消息添加校验码
+            msg = msg + pack_check_num(msg)
+            self.writer.write(msg)
+
+    async def recv(self):
+        protocol = {'sop_state': 0x00,
+                     'check_state1': 0x01,
+                     'check_state2': 0x02,
+                     'keep_state1': 0x03,
+                     'keep_state2': 0x04,
+                     'len_state': 0x05,
+                     'data_state': 0x06,
+                     'fcs_state': 0x07,
+                    }
+        state = 0x00
+        ab_mark = 171
+        cd_mark = 205
+        temp_data_len = 0
+        len_token = 0
+        # 每当有消息进入时就接收直到收到停止符号并将整条消息存入
+        while True:
+            ba = bytearray()
+            while True:
+                x = await self.reader.read(1)
+                ch = ord(x)
+                if state == protocol['sop_state']:
+                    state = protocol['check_state1']
+                if state == protocol['check_state1']:
+                    if cd_mark == ch:
+                        state = protocol['check_state2']
+                        ba.append(ch)
+                    else:
+                        state = protocol['sop_state']
+                elif state == protocol['check_state2']:
+                    if ab_mark == ch:
+                        state = protocol['keep_state1']
+                        ba.append(ch)
+                    else:
+                        state = protocol['sop_state']
+                elif state == protocol['keep_state1']:
+                    state = protocol['keep_state2']
+                    ba.append(ch)
+                elif state == protocol['keep_state2']:
+                    state = protocol['len_state']
+                    ba.append(ch)
+                elif state == protocol['len_state']:
+                    len_token = ch
+                    ba.append(ch)
+                    state = protocol['data_state']
+                    temp_data_len = 0
+                elif state == protocol['data_state']:
+                    ba.append(ch)
+                    temp_data_len += 1
+                    if temp_data_len == len_token + 7:
+                        state = protocol['fcs_state']
+                elif state == protocol['fcs_state']:  # 校验码验证
+                    if not ch == pack_check_num(ba):
+                        # 失败清除数据，校验码不添加进包中
+                        ba.clear()
+                    break
+            state = 0x00
+            await self.process(ba)
 
 class ComReadWrite:
-    def __init__(self):
-        self.com = Com()
-        self.protocol = _Protocol()
+    def __init__(self, url, baudrate):
+        self.com = Com(url=url, baudrate=115200)
         self.current_sent_package = None
         self.expected_package_lv1 = None
         self.expected_package_lv2 = None
