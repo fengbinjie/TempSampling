@@ -1,27 +1,14 @@
 from collections import OrderedDict
 import struct
-import core
 
 _BASIC_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', {'default_value': 0xabcd, 'fmt': 'H'}),
-                         ('node_addr', {'fmt': 'H'}),
-                         ('data_len', {'fmt': 'B'}),
-                         ('profile_id', {'fmt': 'B'}),
-                         ('serial_num', {'fmt': 'B'}),
-                         ('client_id', {'fmt': 'B'})])\
-    if core.MECHANISM else OrderedDict([('fixed_token', {'default_value': 0xabcd, 'fmt': 'H'}),
-                         ('node_addr', {'fmt': 'H'}),
-                         ('data_len', {'fmt': 'B'}),
-                         ('profile_id', {'fmt': 'B'}),
-                         ('serial_num', {'fmt': 'B'})])
+                                        ('data_len', {'fmt': 'B'}),
+                                        ('node_addr', {'fmt': 'H'}),
+                                        ('profile_id', {'fmt': 'B'}),
+                                        ('serial_num', {'fmt': 'B'})])
+
 _SUB_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', {'default_value': 0xcb, 'fmt': 'B'}),
-                       ('data_len', {'fmt': 'B'}),
-                       ('profile_id', {'fmt': 'B'}),
-                       ('serial_num', {'fmt': 'B'}),
-                       ('client_id', {'fmt': 'B'})]) if core.MECHANISM else \
-    OrderedDict([('fixed_token', {'default_value': 0xcb, 'fmt': 'B'}),
-                       ('data_len', {'fmt': 'B'}),
-                       ('profile_id', {'fmt': 'B'}),
-                       ('serial_num', {'fmt': 'B'})])
+                                      ('serial_num', {'fmt': 'B'})])
 
 
 class ProtocolParamAttribute:
@@ -57,18 +44,18 @@ def create_class_protocol(protocol_name, protocol_fields):
             self.header[field] = parameter
 
         self.header_fmt = ''.join(c.fmt for c in self.header.values())
-        self.header_fmt_size = struct.calcsize(''.join([c.fmt for c in self.header.values()]))
+        self.header_fmt_size = sum({'H': 2, 'B': 1}[c.fmt] for c in self.header.values())
         self.endian = '<'
 
     @classmethod
     def get_protocol(cls):
         return cls._instance if cls._instance else cls()
     return type(protocol_name, (), {
-         '_instance': None,
-         '__new__': __new__,
-         '__init__': __init__,
-         'get_protocol': get_protocol
-     })
+        '_instance': None,
+        '__new__': __new__,
+        '__init__': __init__,
+        'get_protocol': get_protocol
+    })
 
 
 def create_class_package(package_name, protocol_type):
@@ -87,7 +74,7 @@ def create_class_package(package_name, protocol_type):
 
 
     def package_produce(self, data):
-        complete_fmt = protocol_type.endian + protocol_type.header_fmt + f'{self.data_len}s'
+        complete_fmt = protocol_type.endian + protocol_type.header_fmt + f'{len(data)}s'
         # 打包头、数据
         values_bytes = struct.pack(complete_fmt, *self.package_value_list(), data)
 
@@ -97,11 +84,11 @@ def create_class_package(package_name, protocol_type):
         pass
 
     return type(package_name, (), {'__slots__': tuple(v for v in protocol_type.header.keys()),
-                                      '__init__': package_init,
-                                      'produce': package_produce,
-                                      'parse': package_parse,
-                               'package_value_list': package_value_list}
-               )
+                                   '__init__': package_init,
+                                   'produce': package_produce,
+                                   'parse': package_parse,
+                                   'package_value_list': package_value_list}
+                )
 
 
 def create_class_fields(fields_name, protocol_type):
@@ -114,8 +101,8 @@ def create_class_fields(fields_name, protocol_type):
             # 赋值属性
             setattr(self, self.__slots__[index], parameter)
     return type(fields_name,(object,),{'__slots__': tuple(v for v in protocol_type.header.keys()),
-                                                   '__init__': fields_init}
-                      )
+                                       '__init__': fields_init}
+                )
 
 
 # 创建子协议类、该类为协议模板且是单例
@@ -134,46 +121,23 @@ Fields = create_class_fields('Fields', protocol)
 # 创建子字段类，包含的字段为子协议类中的字段
 SubFields = create_class_fields('SubFields', sub_protocol)
 
-if core.MECHANISM:
-    def complete_package(node_addr, profile_id, serial_num, client_id, data):
-        if not isinstance(data, bytes):
-            raise Exception("data is not a bytes")
-        # 此处参数的赋值顺序会影响包实例的打包值顺序
-        sub_package = SubPackage(fixed_token=sub_protocol.fixed_token.default_value,
-                                 data_len=len(data),
-                                 profile_id=profile_id,
-                                 serial_num=serial_num,
-                                 client_id=client_id).produce(data)
 
-        package = Package(fixed_token=protocol.fixed_token.default_value,
-                          node_addr=node_addr,
-                          data_len=len(sub_package),
-                          profile_id=profile_id,
-                          serial_num=serial_num,
-                          client_id=client_id).produce(sub_package)
+def complete_package(node_addr, profile_id, serial_num, data):
+    if not isinstance(data, bytes):
+        raise Exception("data is not a bytes")
+    # 此处参数的赋值顺序会影响包实例的打包值顺序
+    sub_package = SubPackage(fixed_token=sub_protocol.fixed_token.default_value,
+                             serial_num=serial_num).produce(data)
 
-        #check_num = pack_check_num(package)
-        #TODO: check应该在串口发送前计算
-        return package
-else:
-    def complete_package(node_addr, profile_id, serial_num, data):
-        if not isinstance(data, bytes):
-            raise Exception("data is not a bytes")
-        # 此处参数的赋值顺序会影响包实例的打包值顺序
-        sub_package = SubPackage(fixed_token=sub_protocol.fixed_token.default_value,
-                                 data_len=len(data),
-                                 profile_id=profile_id,
-                                 serial_num=serial_num).produce(data)
+    package = Package(fixed_token=protocol.fixed_token.default_value,
+                      data_len=len(sub_package),
+                      node_addr=node_addr,
+                      profile_id=profile_id,
+                      serial_num=serial_num).produce(sub_package)
 
-        package = Package(fixed_token=protocol.fixed_token.default_value,
-                          node_addr=node_addr,
-                          data_len=len(sub_package),
-                          profile_id=profile_id,
-                          serial_num=serial_num).produce(sub_package)
-
-        # check_num = pack_check_num(package)
-        # TODO: check应该在串口发送前计算
-        return package
+    # check_num = pack_check_num(package)
+    # TODO: check应该在串口发送前计算
+    return package
 
 
 def parse_package(package):
@@ -184,7 +148,7 @@ def parse_package(package):
     data = b''
     if reverse_package.data_len > 0:
         reverse_sub_package = SubFields(package[protocol.header_fmt_size:])
-        if reverse_sub_package.data_len > 0:
+        if reverse_package.data_len-sub_protocol.header_fmt_size > 0:
             data = package[protocol.header_fmt_size+sub_protocol.header_fmt_size:]
     return reverse_package, reverse_sub_package, data
 
