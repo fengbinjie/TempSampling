@@ -44,8 +44,8 @@ def create_class_protocol(protocol_name, protocol_fields):
             self.header[field] = parameter
 
         self.header_fmt = ''.join(c.fmt for c in self.header.values())
-        self.header_fmt_size = sum({'H': 2, 'B': 1}[c.fmt] for c in self.header.values())
         self.endian = '<'
+        self.header_fmt_size = struct.calcsize(f'{self.endian}{self.header_fmt}')
 
     @classmethod
     def get_protocol(cls):
