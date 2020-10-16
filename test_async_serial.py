@@ -13,7 +13,6 @@ class AsyncSerialTestSuite(unittest.TestCase):
     node_addr = 0x1234
     profile_id = 0x01
     serial_num = 127
-    client_id = 0x03
 
     def test_dynamic_package(self):
         actual = pr.Package(fixed_token=self.fixed_token, node_addr=self.node_addr,

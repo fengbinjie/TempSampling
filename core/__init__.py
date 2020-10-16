@@ -1,5 +1,3 @@
 import os
 
-PROJECT_DIR = os.path.abspath('.')
-
-
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

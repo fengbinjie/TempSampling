@@ -1,0 +1,3 @@
+default_baudrate: 115200
+default_nt_com: COM8
+default_posix_com: /dev/ttyAMA0

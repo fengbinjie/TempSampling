@@ -3,12 +3,11 @@ import logging
 import os
 import struct
 import threading
-
+import time
 import yaml
 
 import core
-import core.async_serial as serial
-import core.protocol as pr
+import core.serial_with_protocol as serial
 
 __title__ = 'tempsampling'
 __version__ = '0.1.0'
@@ -17,23 +16,58 @@ __author__ = 'Binjie Feng'
 __license__ = 'ISC'
 __copyright__ = 'Copyright 2020 Binjie Feng'
 
-NodeList = []  # 节点列表
+# 节点字典 key 是节点短地址,value是Node类
+Nodes = {}
 SERIAL_NUM = 0
 logger = logging.getLogger('asyncio')
 
+def get_setting():
+    """
+    以yaml格式解析setting文件
+    :return: 字典形式的属性集合
+    """
+    try:
+        with open(os.path.join(core.PROJECT_DIR, 'setting.yml')) as f:
+            setting_dict = yaml.load(f, Loader=yaml.FullLoader)
+    except FileNotFoundError as why:
+        print(why)
+        exit()
+    else:
+        return setting_dict
 
-DEFAULT_COM = None
-if os.name is 'nt':
-    DEFAULT_COM = yaml.load(os.path.join(core.PROJECT_DIR,'/setting'))['default_nt_com']
-elif os.name is 'posix':
-    DEFAULT_COM = yaml.load(os.path.join(core.PROJECT_DIR,'/setting'))['default_posix_com']
-else:
-    raise Exception('unsupported system')
-active_serial = serial.ComReadWrite(DEFAULT_COM,115200)
+def get_serial():
+    setting_dict = get_setting()
+    if os.name is 'nt':
+        default_com = setting_dict['default_nt_com']
+    elif os.name is 'posix':
+        default_com = setting_dict['default_posix_com']
+    else:
+        raise Exception('unsupported system')
+    default_baudrate = setting_dict['default_baudrate']
+    return serial.ReadWrite(default_com, default_baudrate, 0.01)
+
+
+def write_setting(**kwargs):
+    """
+    将参数中的键值对写入setting.yml文件
+    :param kwargs:
+    :return:
+    """
+    setting_dict = get_setting()
+    setting_dict_keys = setting_dict.keys()
+    for k, v in kwargs.items():
+        # 如果setting存在被给属性且属性值的类型和参数中给的值的类型相同则写入
+        if k in setting_dict_keys and isinstance(v, type(setting_dict[k])):
+            setting_dict[k] = v
+        else:
+            raise Exception("不存在该属性或值错误")
+    # 将字典以yaml的格式写入
+    with open(os.path.join(core.PROJECT_DIR, 'setting.yml'), mode='w') as f:
+        yaml.dump(setting_dict, f)
+
 class Node:
-    def __init__(self, short_addr, mac_addr):
-        self.short_addr = None
-        self.mac_addr = None
+    def __init__(self, mac_addr):
+        self.mac_addr = mac_addr
         self.led_file_path = None
 
     def get_led(self):
@@ -41,11 +75,10 @@ class Node:
 
 
 def acquire_temperature(reverse_package, reverse_sub_package, data):
-    temperature = data / 10
-    logger.info("EndDevice {0:10} | temp{1:5} |count{2:5}".format(
-        hex(reverse_package.node_addr),
-        temperature
-    ))
+    # 解包温度
+    temperature = struct.unpack('<H', data)[0] / 10
+    print(f"EndDevice {reverse_package.node_addr} | temp{temperature}")
+    # logger.info(f"EndDevice {reverse_package.node_addr} | temp{temperature}")
 
 
 def confirm_led_setting(reverse_package, reverse_sub_package, data):
@@ -54,31 +87,30 @@ def confirm_led_setting(reverse_package, reverse_sub_package, data):
 
 
 def new_node_join(reverse_package, reverse_sub_package, data):
-    #H:代表16位短地址，8B代表64位mac地址
+    # H:代表16位短地址，8B代表64位mac地址
     fmt = "H8B"
     # 该命令只有串口协议
-    mixed_addr_tuple = struct.unpack(f'{pr.sub_protocol.endian}{fmt}', data)
+    mixed_addr_tuple = struct.unpack(f'<{fmt}', data)
     ext_addr = ' '.join([str(i) for i in mixed_addr_tuple[1:9]])
     nwk_addr = mixed_addr_tuple[-1]
-    NodeList.append(Node(nwk_addr,ext_addr))
+    Nodes[nwk_addr] = Node(ext_addr)
     logger.warning(f"节点加入 {nwk_addr} | {ext_addr}")
 
 
-def get_node_list(reverse_package, reverse_sub_package, data):
+def set_nodes(reverse_package, reverse_sub_package, data):
     # H:代表16位短地址，8B代表64位mac地址
     fmt = "H8B"
     # 该命令只有串口协议
     fmt_len = struct.calcsize(fmt)
-    fmt = fmt * (reverse_sub_package.data_len // fmt_len)
-    mixed_addr_tuple = struct.unpack(f'{pr.sub_protocol.endian}{fmt}', data)
+    fmt = fmt * (len(data) // fmt_len)
+    mixed_addr_tuple = struct.unpack(f'<{fmt}', data)
 
     l_len = len(mixed_addr_tuple) // 9
-    mixed_addr_list = {}
     for index in range(l_len):
         nwk_addr = mixed_addr_tuple[9 * index]
-        ext_addr = ' '.join([str(i) for i in mixed_addr_tuple[index * 9 + 1:(index + 1) * 9]])
-        mixed_addr_list[nwk_addr] = ext_addr
-        NodeList.append(Node(nwk_addr, ext_addr))
+        ext_addr = mixed_addr_tuple[index * 9 + 1:(index + 1) * 9]
+        Nodes[nwk_addr] = Node(ext_addr)
+
 
 temp_recv_cluster ={
     0x08: acquire_temperature
@@ -88,7 +120,6 @@ led_recv_cluster = {
 }
 nodes_recv_cluster={
     0x08: new_node_join,
-    0x09: get_node_list
 }
 recv_clusters={
     0x10: temp_recv_cluster,
@@ -109,16 +140,17 @@ def determine_command(profile_id):
     # 确定使用哪个命令处理
     return sub_cluster[profile_id ^ 0x0f]
 
-def recv_process(package):
-    # 解析包
-    reverse_package, reverse_sub_package, data = pr.parse_package(package)
-    # 确定使用哪个命令处理
-    data_process_func = determine_command(reverse_package.profile_id)
-    # 具体处理
-    data_process_func(reverse_package, reverse_sub_package, data)
+# def recv_process(package):
+#     # 解析包
+#     reverse_package, reverse_sub_package, data = pr.parse_package(package)
+#     # 确定使用哪个命令处理
+#     data_process_func = determine_command(reverse_package.profile_id)
+#     # 具体处理
+#     data_process_func(reverse_package, reverse_sub_package, data)
 
 
 # todo:改写成上下文管理器，每次创建一个任务后都执行一次该函数
+
 lock = threading.Lock()
 def serial_num_self_increasing():
     global SERIAL_NUM
@@ -148,25 +180,46 @@ def check_led_exist(node_mac_addr):
 
 
 # TODO:改成生成器
-def temp_sampling():
-    # 节点中途离线怎么办
-    package_list = None
-    for node in NodeList:
-        pr.complete_package(node_addr=node.short_addr, profile_id=0x21, serial_num=SERIAL_NUM, data=b'')
-        serial_num_self_increasing()
-    return package_list
-
 def cycle_sampling():
-    while TEMP_SAMPLING_FLAG:
-        for package in temp_sampling():
-            active_serial.send_data_process(package)
+    # 得到串口
+    serial = get_serial()
+    # 接收数据线程
+    c1 = serial.recv_data_process()
+    def process_temp():
+        while True:
+            data = next(c1)
+            acquire_temperature(*data)
+
+    recv_thread = threading.Thread(target=process_temp,args=())
+    recv_thread.setDaemon(True)
+    recv_thread.start()
+    while True:
+        # 获得现存短地址列表
+        node_short_addr_list = Nodes.keys()
+        if node_short_addr_list:
+            for node_short_addr in node_short_addr_list:
+                if TEMP_SAMPLING_FLAG:
+                    serial.send_data(node_short_addr, 0x10, SERIAL_NUM)
+                else:
+                    # 退出整理
+                    exit()
+                time.sleep(1)
+        else:
+            print("there is no node")
+            time.sleep(5)
 
 
 # 询问zigbee节点列表
 def get_nodes_info():
-    package = pr.complete_package(node_addr=0x0000, profile_id=0x11, serial_num=SERIAL_NUM, data=b'')
-    serial_num_self_increasing()
-    return package
+    rw = get_serial()
+    # 获得数据接收生成器
+    c1 = rw.recv_data_process()
+    # 询问节点列表
+    rw.send_data(node_addr=0x0000, profile_id=0x30, serial_num=127)
+    # 得到结果,并设置
+    set_nodes(*next(c1))
+
+
 
 
 NODE_LED_MAPPING = {}
@@ -201,13 +254,65 @@ def remove_tempsampling_flag():
 
 
 def main():
+    def args_func(args):
+        if args.nodes:
+            get_nodes_info()
+            for short_addr, node in Nodes.items():
+                print(hex(short_addr), node.mac_addr)
+
+    def port_args_func(args):
+        # 列出当前所有串口
+        if args.ports:
+            ports = serial.find_serial_port_list()
+            print(ports if ports else 'there is no port')
+
+        # 选择指定串口去通信
+        if args.select_port:
+            if os.name is 'nt':
+                write_setting(default_nt_com=args.select_port)
+            elif os.name is 'posix':
+                write_setting(default_posix_com=args.select_port)
+            else:
+                raise Exception('unsupported system')
+
+
+
+    def led_args_func(args):
+        if args.current:
+            led_node_mapping = get_live_nodes_led_path()
+            # TODO:格式化输出
+            # TODO:补充当前映射文件节点的逻辑
+            print(led_node_mapping)
+        if args.all:
+            led_node_mapping = get_live_nodes_led_path(is_alive=False)
+            # TODO:格式化输出
+            print(led_node_mapping)
+            # TODO:补充全部映射文件节点的逻辑
+
+    def temp_args_func(args):
+        # 温度采集任务开始
+        if args.temp_start:
+            # TODO:开始循环采集温度任务
+            get_nodes_info()
+            set_tempsampling_flag()
+            cycle_sampling()
+        # 停止采集任务
+        if args.temp_stop:
+            if args.temp_stop:
+                remove_tempsampling_flag()
+
+
     parser = argparse.ArgumentParser(description=f'TempSampling {__version__} - TUXIHUOZAIGONGCHENG',
                                      prog='TempSampling')
-    sub_parser =parser.add_subparsers()
+    parser.add_argument('--list',
+                        help='Show all nodes in zigbee Currently',
+                        dest='nodes',
+                        action='store_true')
+    parser.set_defaults(func=args_func)
+
+    sub_parsers = parser.add_subparsers(help='sub-command help')
     #todo:help属性增加
-    port_parser = sub_parser.add_parser('port')
-    led_parser = sub_parser.add_parser('led')
-    temp_parser = sub_parser.add_parser('temp')
+    port_parser = sub_parsers.add_parser('port', help='port')
     # 获得所有串口
     port_parser.add_argument('-l',
                              '--list',
@@ -216,10 +321,13 @@ def main():
                              action='store_true'
                              )
     # 选择指定串口通信
-    port_parser.add_subparsers('-s',
-                               '--select',
-                               help='select this com to communicate',
-                               dest='select_port')
+    port_parser.add_argument('-s',
+                             '--select',
+                             help='select this com to communicate',
+                             dest='select_port')
+    port_parser.set_defaults(func=port_args_func)
+
+    led_parser = sub_parsers.add_parser('led', help='led')
     # 获得当前所有节点的灯语映射
     led_parser.add_argument('-c',
                             dest='current',
@@ -232,6 +340,9 @@ def main():
                             help='Show all node-led mapping',
                             action='store_true'
                             )
+    led_parser.set_defaults(func=led_args_func)
+
+    temp_parser = sub_parsers.add_parser('temp', help='temp')
     temp_parser.add_argument('--start',
                              dest='temp_start',
                              action='store_true',
@@ -242,39 +353,13 @@ def main():
                              action='store_true',
                              help='stop Server'
                              )
+    temp_parser.set_defaults(func=temp_args_func)
 
     args = parser.parse_args()
-    led_args = led_parser.parse_args()
-    port_args = port_parser.parse_args()
-    temp_args = temp_parser.parse_args()
-    # 温度采集任务开始
-    if temp_args.temp_start:
-        # TODO:开始循环采集温度任务
-        set_tempsampling_flag()
-        temp_sampling()
-        return
-    # 停止采集任务
-    if temp_args.temp_stop:
-        remove_tempsampling_flag()
-        return
-    # 列出当前所有串口
-    if port_args.ports:
-        ports = serial.find_serial_port_list()
-        print(ports if ports else "there is no port")
-        return
-    # 选择指定串口去通信
-    if port_args.select_port:
-        port = port_args.select_port
-        # TODO:选择指定串口去通信
+    args.func(args)
 
-    if led_args.current:
-        led_node_mapping = get_live_nodes_led_path()
-        # TODO:格式化输出
-        # TODO:补充当前映射文件节点的逻辑
-        print(led_node_mapping)
-        return
-    if led_args.all:
-        led_node_mapping = get_live_nodes_led_path(is_alive=False)
-        # TODO:格式化输出
-        print(led_node_mapping)
-        # TODO:补充全部映射文件节点的逻辑
+
+
+
+if __name__ == '__main__':
+    main()

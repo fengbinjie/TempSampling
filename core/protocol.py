@@ -1,11 +1,11 @@
 from collections import OrderedDict
 import struct
-
-_BASIC_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', {'default_value': 0xabcd, 'fmt': 'H'}),
-                                        ('data_len', {'fmt': 'B'}),
-                                        ('node_addr', {'fmt': 'H'}),
-                                        ('profile_id', {'fmt': 'B'}),
-                                        ('serial_num', {'fmt': 'B'})])
+ENDIAN = '<'
+BASIC_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', {'default_value': 0xabcd, 'fmt': 'H'}),
+                                       ('data_len', {'fmt': 'B'}),
+                                       ('node_addr', {'fmt': 'H'}),
+                                       ('profile_id', {'fmt': 'B'}),
+                                       ('serial_num', {'fmt': 'B'})])
 
 _SUB_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', {'default_value': 0xcb, 'fmt': 'B'}),
                                       ('serial_num', {'fmt': 'B'})])
@@ -24,9 +24,9 @@ class ProtocolParamAttribute:
 def create_class_protocol(protocol_name, protocol_fields):
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            print(cls.__name__)
-            print(help(super(cls, cls)))
-            print(super(object, cls))
+            # print(cls.__name__)
+            # print(help(super(cls, cls)))
+            # print(super(object, cls))
             # 笔记： super()方法在类的方法中使用可以省略参数而在函数外面必须填写参数
             # 笔记： super(cls,cls）调用父类的正确方法而不是super(object,cls)
             cls._instance = super(cls, cls).__new__(cls)
@@ -44,7 +44,7 @@ def create_class_protocol(protocol_name, protocol_fields):
             self.header[field] = parameter
 
         self.header_fmt = ''.join(c.fmt for c in self.header.values())
-        self.endian = '<'
+        self.endian = ENDIAN
         self.header_fmt_size = struct.calcsize(f'{self.endian}{self.header_fmt}')
 
     @classmethod
@@ -108,7 +108,7 @@ def create_class_fields(fields_name, protocol_type):
 # 创建子协议类、该类为协议模板且是单例
 SubProtocol = create_class_protocol('SubProtocol', _SUB_PROTOCOL_PROPERTY)
 # 创建协议类、该类为协议模板且是单例
-Protocol = create_class_protocol('Protocol', _BASIC_PROTOCOL_PROPERTY)
+Protocol = create_class_protocol('Protocol', BASIC_PROTOCOL_PROPERTY)
 
 protocol = Protocol.get_protocol()
 sub_protocol = SubProtocol.get_protocol()
@@ -141,15 +141,19 @@ def complete_package(node_addr, profile_id, serial_num, data):
 
 
 def parse_package(package):
-    if not isinstance(package,bytes):
+    if not isinstance(package, bytes):
         raise Exception("package is not a bytes")
     reverse_package = Fields(package)
     reverse_sub_package = None
     data = b''
-    if reverse_package.data_len > 0:
-        reverse_sub_package = SubFields(package[protocol.header_fmt_size:])
-        if reverse_package.data_len-sub_protocol.header_fmt_size > 0:
-            data = package[protocol.header_fmt_size+sub_protocol.header_fmt_size:]
+    # 假如只是来自协调器的包因为没有zigbee消息头所以不需要处理
+    if reverse_package.node_addr is 0x0000:
+        data = package[protocol.header_fmt_size:]
+    else:
+        if reverse_package.data_len > 0:
+            reverse_sub_package = SubFields(package[protocol.header_fmt_size:])
+            if reverse_package.data_len-sub_protocol.header_fmt_size > 0:
+                data = package[protocol.header_fmt_size+sub_protocol.header_fmt_size:]
     return reverse_package, reverse_sub_package, data
 
 
