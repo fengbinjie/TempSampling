@@ -7,7 +7,7 @@ import time
 import yaml
 
 import core
-import core.serial_with_protocol as serial
+import core.serial_with_protocol as Serial
 import core.util as util
 
 __title__ = 'tempsampling'
@@ -19,6 +19,9 @@ __copyright__ = 'Copyright 2020 Binjie Feng'
 
 # 节点字典 key 是节点短地址,value是Node类
 Nodes = {}
+# 节点和灯语文件的映射 ，key是节点的mac地址，value是灯语文件的位置
+# 假如不存在任何映射则赋值为空字典
+node_led_mapping = util.get_setting(os.path.join(core.PROJECT_DIR, "led_node_mapping.yml")) or {}
 
 SERIAL_NUM = 0
 logger = logging.getLogger('asyncio')
@@ -33,7 +36,7 @@ def get_serial():
     else:
         raise Exception('unsupported system')
     default_baudrate = setting_dict['default_baudrate']
-    return serial.ReadWrite(default_com, default_baudrate, 0.01)
+    return Serial.ReadWrite(default_com, default_baudrate, 0.01)
 
 
 class Node:
@@ -53,8 +56,8 @@ def acquire_temperature(reverse_package, reverse_sub_package, data):
 
 
 def confirm_led_setting(reverse_package, reverse_sub_package, data):
-
-    logger.info(f"{reverse_package.node_addr}LED已设置{data}")
+    print(reverse_package,reverse_sub_package,data)
+    # logger.info(f"{reverse_package.node_addr}LED已设置{data}")
 
 
 def new_node_join(reverse_package, reverse_sub_package, data):
@@ -78,15 +81,11 @@ def set_nodes(reverse_package, reverse_sub_package, data):
 
     l_len = len(mixed_addr_tuple) // 9
 
-    # 节点和灯语文件的映射 ，key是节点的mac地址，value是灯语文件的位置
-    # 假如不存在任何映射则赋值为空字典
-    node_led_mapping = util.get_setting(os.path.join(core.PROJECT_DIR, "led_node_mapping.yml")) or {}
-
     for index in range(l_len):
         # 短地址
         nwk_addr = mixed_addr_tuple[9 * index]
         # 长地址
-        ext_addr = mixed_addr_tuple[index * 9 + 1:(index + 1) * 9]
+        ext_addr = " ".join([str(v) for v in mixed_addr_tuple[index * 9 + 1:(index + 1) * 9]])
         # 有灯语
         led_sequence = node_led_mapping.get(ext_addr)
         # 生成节点对象
@@ -109,19 +108,29 @@ def serial_num_self_increasing():
     with lock:
         SERIAL_NUM += 1
 
-def led_node_mapping_exist():
-    if os.path.exists(os.path.join(core.PROJECT_DIR, '/led_node_mapping.yml')):
-        return True
-    else:
-        return False
 
+def write_led_sequences():
+    # 得到串口
+    serial = get_serial()
+    # 接收数据线程
+    c1 = serial.recv_data_process()
+    # 内置函数处理数据
+    def process_recv():
+        while True:
+            data = next(c1)
+            confirm_led_setting(*data)
 
-def load_led_node_mapping():
-    if led_node_mapping_exist():
-        return yaml.load(os.path.join(core.PROJECT_DIR, '/led_node_mapping.yml'), yaml.FullLoader)
-    else:
-        raise Exception('No led_node_mapping.yml')
-
+    recv_thread = threading.Thread(target=process_recv, args=())
+    recv_thread.setDaemon(True)
+    recv_thread.start()
+    for short_addr, node in Nodes.items():
+        if node.led_file_path:
+            led_sequence = util.get_setting(node.led_file_path)
+            led_sequence = [v for led in led_sequence for v in led]
+            led_sequence_bytes = struct.pack(f'<{len(led_sequence)}H', *led_sequence)
+            serial.send_data(short_addr, 0x20, SERIAL_NUM, data=led_sequence_bytes)
+    # todo:使用等待时间不合理，存储流水号后每接收到一条回复去掉存储的流水号，全部去除后关闭
+    time.sleep(2)
 
 def check_led_exist(node_mac_addr):
     if node_mac_addr:
@@ -172,27 +181,12 @@ def get_nodes_info():
     set_nodes(*next(c1))
 
 
-
-
-
-# is_live获得现存节点与led文件的映射 否则获得所有节点与led文件的映射
-
-
-def get_live_nodes_led_path(is_alive=True):
-    # 检查led_node_mapping文件是否存在
-    led_dict = load_led_node_mapping()
-    led_dict_keys = led_dict.keys()
-    # 取出所有的值，yaml格式，键代表节点mac地址，值代表led文件地址
-    if is_alive:
-        current_live_led_dict = {}
-        for node in Nodes:
-            # 其中是否存在现存节点
-            if node.mac_addr in led_dict_keys:
-                # 以一个字典返回现存节点和文件地址
-                current_live_led_dict.update(led_dict.popitem())
-        return current_live_led_dict
-    else:
-        return led_dict
+def get_all_nodes_led_mappings():
+    for node in Nodes.values():
+        # 其中是否存在现存节点
+        # 以一个字典返回现存节点和文件地址
+        node_led_mapping.setdefault(node.mac_addr, node.led_file_path)
+    return node_led_mapping
 
 
 def set_tempsampling_flag():
@@ -215,7 +209,7 @@ def main():
     def port_args_func(args):
         # 列出当前所有串口
         if args.ports:
-            ports = serial.find_serial_port_list()
+            ports = Serial.find_serial_port_list()
             print(ports if ports else 'there is no port')
 
         # 选择指定串口去通信
@@ -227,19 +221,21 @@ def main():
             else:
                 raise Exception('unsupported system')
 
-
-
     def led_args_func(args):
-        if args.current:
-            led_node_mapping = get_live_nodes_led_path()
-            # TODO:格式化输出
-            # TODO:补充当前映射文件节点的逻辑
-            print(led_node_mapping)
         if args.all:
-            led_node_mapping = get_live_nodes_led_path(is_alive=False)
+            # 获得所有节点
+            get_nodes_info()
+            # 获得所有节点长地址和灯语的映射（包括在线的和未在线但被记录在led_node_mapping.yml文件中的）
+            led_node_mapping = get_all_nodes_led_mappings()
             # TODO:格式化输出
             print(led_node_mapping)
-            # TODO:补充全部映射文件节点的逻辑
+            exit()
+        if args.write:
+            # 设置某个节点的灯语
+            # 获得当前节点
+            get_nodes_info()
+            # 设置灯语后必须重启才能生效
+            write_led_sequences()
 
     def temp_args_func(args):
         # 温度采集任务开始
@@ -281,9 +277,9 @@ def main():
 
     led_parser = sub_parsers.add_parser('led', help='led')
     # 获得当前所有节点的灯语映射
-    led_parser.add_argument('-c',
-                            dest='current',
-                            help='Show current node-led mapping',
+    led_parser.add_argument('-w',
+                            dest='write',
+                            help='write led sequence to node\'s rom',
                             action='store_true'
                             )
     # 获得保存的所有节点和灯语的映射

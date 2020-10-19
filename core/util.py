@@ -3,7 +3,7 @@ import yaml
 
 def get_setting(file):
     """
-    以yaml格式解析setting文件
+    以yaml格式解析yaml文件
     :param file:
     :return: 字典形式的属性集合
     """
