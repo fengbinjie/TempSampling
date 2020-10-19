@@ -19,6 +19,7 @@ __copyright__ = 'Copyright 2020 Binjie Feng'
 
 # 节点字典 key 是节点短地址,value是Node类
 Nodes = {}
+
 SERIAL_NUM = 0
 logger = logging.getLogger('asyncio')
 
@@ -76,10 +77,20 @@ def set_nodes(reverse_package, reverse_sub_package, data):
     mixed_addr_tuple = struct.unpack(f'<{fmt}', data)
 
     l_len = len(mixed_addr_tuple) // 9
+
+    # 节点和灯语文件的映射 ，key是节点的mac地址，value是灯语文件的位置
+    # 假如不存在任何映射则赋值为空字典
+    node_led_mapping = util.get_setting(os.path.join(core.PROJECT_DIR, "led_node_mapping.yml")) or {}
+
     for index in range(l_len):
+        # 短地址
         nwk_addr = mixed_addr_tuple[9 * index]
+        # 长地址
         ext_addr = mixed_addr_tuple[index * 9 + 1:(index + 1) * 9]
-        Nodes[nwk_addr] = Node(ext_addr)
+        # 有灯语
+        led_sequence = node_led_mapping.get(ext_addr)
+        # 生成节点对象
+        Nodes[nwk_addr] = Node(ext_addr, led_sequence)
 
 
 TEMP_SAMPLING_FLAG = False
@@ -163,7 +174,7 @@ def get_nodes_info():
 
 
 
-NODE_LED_MAPPING = {}
+
 # is_live获得现存节点与led文件的映射 否则获得所有节点与led文件的映射
 
 
@@ -174,7 +185,7 @@ def get_live_nodes_led_path(is_alive=True):
     # 取出所有的值，yaml格式，键代表节点mac地址，值代表led文件地址
     if is_alive:
         current_live_led_dict = {}
-        for node in NodeList:
+        for node in Nodes:
             # 其中是否存在现存节点
             if node.mac_addr in led_dict_keys:
                 # 以一个字典返回现存节点和文件地址
