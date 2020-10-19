@@ -135,8 +135,6 @@ def complete_package(node_addr, profile_id, serial_num, data):
                       profile_id=profile_id,
                       serial_num=serial_num).produce(sub_package)
 
-    # check_num = pack_check_num(package)
-    # TODO: check应该在串口发送前计算
     return package
 
 
@@ -155,15 +153,3 @@ def parse_package(package):
             if reverse_package.data_len-sub_protocol.header_fmt_size > 0:
                 data = package[protocol.header_fmt_size+sub_protocol.header_fmt_size:]
     return reverse_package, reverse_sub_package, data
-
-
-def check(buf):
-    xor_result = 0
-    for v in buf:
-        xor_result = xor_result ^ v
-    return xor_result
-
-
-def pack_check_num(value_bytes):
-    # 打包校验码
-    return struct.pack(f'{protocol.endian}B', check(value_bytes))
