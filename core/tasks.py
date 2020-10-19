@@ -8,6 +8,7 @@ import yaml
 
 import core
 import core.serial_with_protocol as serial
+import core.util as util
 
 __title__ = 'tempsampling'
 __version__ = '0.1.0'
@@ -21,22 +22,9 @@ Nodes = {}
 SERIAL_NUM = 0
 logger = logging.getLogger('asyncio')
 
-def get_setting():
-    """
-    以yaml格式解析setting文件
-    :return: 字典形式的属性集合
-    """
-    try:
-        with open(os.path.join(core.PROJECT_DIR, 'setting.yml')) as f:
-            setting_dict = yaml.load(f, Loader=yaml.FullLoader)
-    except FileNotFoundError as why:
-        print(why)
-        exit()
-    else:
-        return setting_dict
 
 def get_serial():
-    setting_dict = get_setting()
+    setting_dict = util.get_setting(os.path.join(core.PROJECT_DIR, 'setting.yml'))
     if os.name is 'nt':
         default_com = setting_dict['default_nt_com']
     elif os.name is 'posix':
@@ -47,28 +35,10 @@ def get_serial():
     return serial.ReadWrite(default_com, default_baudrate, 0.01)
 
 
-def write_setting(**kwargs):
-    """
-    将参数中的键值对写入setting.yml文件
-    :param kwargs:
-    :return:
-    """
-    setting_dict = get_setting()
-    setting_dict_keys = setting_dict.keys()
-    for k, v in kwargs.items():
-        # 如果setting存在被给属性且属性值的类型和参数中给的值的类型相同则写入
-        if k in setting_dict_keys and isinstance(v, type(setting_dict[k])):
-            setting_dict[k] = v
-        else:
-            raise Exception("不存在该属性或值错误")
-    # 将字典以yaml的格式写入
-    with open(os.path.join(core.PROJECT_DIR, 'setting.yml'), mode='w') as f:
-        yaml.dump(setting_dict, f)
-
 class Node:
-    def __init__(self, mac_addr):
+    def __init__(self, mac_addr, led_file_path=None):
         self.mac_addr = mac_addr
-        self.led_file_path = None
+        self.led_file_path = led_file_path
 
     def get_led(self):
         return yaml.load(self.led_file_path, Loader=yaml.FullLoader)
@@ -112,41 +82,12 @@ def set_nodes(reverse_package, reverse_sub_package, data):
         Nodes[nwk_addr] = Node(ext_addr)
 
 
-temp_recv_cluster ={
-    0x08: acquire_temperature
-}
-led_recv_cluster = {
-    0x08: confirm_led_setting
-}
-nodes_recv_cluster={
-    0x08: new_node_join,
-}
-recv_clusters={
-    0x10: temp_recv_cluster,
-    0x20: led_recv_cluster,
-    0x30: nodes_recv_cluster
-}
-
 TEMP_SAMPLING_FLAG = False
 
 
 def is_temp_receipt(profile_id):
     return True if profile_id ^ 0x10 else False
 
-
-def determine_command(profile_id):
-    # 确定使用哪个命令处理集
-    sub_cluster = recv_clusters[profile_id ^ 0xf0]
-    # 确定使用哪个命令处理
-    return sub_cluster[profile_id ^ 0x0f]
-
-# def recv_process(package):
-#     # 解析包
-#     reverse_package, reverse_sub_package, data = pr.parse_package(package)
-#     # 确定使用哪个命令处理
-#     data_process_func = determine_command(reverse_package.profile_id)
-#     # 具体处理
-#     data_process_func(reverse_package, reverse_sub_package, data)
 
 
 # todo:改写成上下文管理器，每次创建一个任务后都执行一次该函数
@@ -269,9 +210,9 @@ def main():
         # 选择指定串口去通信
         if args.select_port:
             if os.name is 'nt':
-                write_setting(default_nt_com=args.select_port)
+                util.write_setting(file=os.path.join(core.PROJECT_DIR,"setting.yml"), default_nt_com=args.select_port)
             elif os.name is 'posix':
-                write_setting(default_posix_com=args.select_port)
+                util.write_setting(file=os.path.join(core.PROJECT_DIR,"setting.yml"),default_posix_com=args.select_port)
             else:
                 raise Exception('unsupported system')
 
@@ -296,7 +237,7 @@ def main():
             get_nodes_info()
             set_tempsampling_flag()
             cycle_sampling()
-        # 停止采集任务
+        # ToDo:停止采集任务,用shell来关闭，直接这样写无法关闭
         if args.temp_stop:
             if args.temp_stop:
                 remove_tempsampling_flag()
