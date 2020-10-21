@@ -13,6 +13,9 @@ sub_content_property = OrderedDict([('sub_serial_num', {'fmt': 'B'})])
 SUB_PROTOCOL_PROPERTY = {**sub_fixed_token_property, **sub_content_property}
 
 
+def sub_header_len(endian=ENDIAN):
+    fmt_str = ''.join([v.get('fmt') for v in SUB_PROTOCOL_PROPERTY.values()])
+    return struct.calcsize(endian+fmt_str)
 
 
 def get_fixed_token_property(endian=ENDIAN):
@@ -23,18 +26,7 @@ def get_fixed_token_property(endian=ENDIAN):
     return v, fmt, l_fmt
 
 
-def subprotocol_fmt(with_endian, endian=ENDIAN):
-    fmt_str = ''.join([v['fmt'] for k, v in SUB_PROTOCOL_PROPERTY.items()])
-    return endian+fmt_str if with_endian else fmt_str
-
-
-def get_content_fmt(with_endian, endian=ENDIAN):
-    # 获得content_property值中完整content_fmt
-    fmt_str = "".join([value["fmt"] for value in content_property.values()])
-    # 返回content_fmt_str
-    return endian+fmt_str if with_endian else fmt_str
-
-def get_content_fmt2(with_endian,endian=ENDIAN):
+def unfixed_header_fmt(with_endian, endian=ENDIAN):
     fmt_str = content_property['node_addr']['fmt'] + \
               content_property['profile_id']['fmt'] + \
               content_property['serial_num']['fmt']

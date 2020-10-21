@@ -7,7 +7,10 @@ import struct
 import queue
 
 
-# 状态机
+sub_header_len = protocol.sub_header_len()
+header_fixed_token = protocol.BASIC_PROTOCOL_PROPERTY['fixed_token']['default_value']
+sub_header_fixed_token = protocol.SUB_PROTOCOL_PROPERTY['sub_fixed_token']['default_value']
+
 
 class ReadWrite:
     def __init__(self, url, baud_rate, interval):
@@ -34,8 +37,8 @@ class ReadWrite:
 
     def recv_data_process(self):
         # 创建回执
-        # 除数据外额外需要接受的包头信息长度
-        extra_fields_len = struct.calcsize(protocol.get_content_fmt2(with_endian=True))
+        # 除数据外额外需要接受的包头(除去固定标志位）信息长度
+        extra_fields_len = struct.calcsize(protocol.unfixed_header_fmt(with_endian=True))
         # 获得固定标志位的默认值和加上字节顺序的fmt以及获得fmt的长度
         known_fixed_token, fixed_token_fmt, fixed_token_fmt_len = protocol.get_fixed_token_property()
         while not self.receiveProgressStop:
@@ -115,12 +118,12 @@ class ReadWrite:
         if self.com.is_open:
             # 打包
             package = protocol.complete_package(data,
-                                                fixed_token=0xabcd,
-                                                data_len=len(data)+2,
+                                                fixed_token=header_fixed_token,
+                                                data_len=len(data)+sub_header_len,
                                                 node_addr=node_addr,
                                                 profile_id=profile_id,
                                                 serial_num=serial_num,
-                                                sub_fixed_token=0xcb,
+                                                sub_fixed_token=sub_header_fixed_token,
                                                 sub_serial_num=serial_num,
                                                 )
             # 加上校验值
