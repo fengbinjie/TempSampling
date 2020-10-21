@@ -48,36 +48,36 @@ class Node:
         return yaml.load(self.led_file_path, Loader=yaml.FullLoader)
 
 
-def acquire_temperature(reverse_package, reverse_sub_package, data):
+def acquire_temperature(receipt):
     # 解包温度
-    temperature = struct.unpack('<H', data)[0] / 10
-    print(f"EndDevice {reverse_package.node_addr} | temp{temperature}")
+    temperature = struct.unpack('<H', receipt. data)[0] / 10
+    print(f"EndDevice {receipt.node_addr} | temp{temperature}")
     # logger.info(f"EndDevice {reverse_package.node_addr} | temp{temperature}")
 
 
-def confirm_led_setting(reverse_package, reverse_sub_package, data):
-    print(reverse_package,reverse_sub_package,data)
+def confirm_led_setting(receipt):
+    print(receipt.data)
     # logger.info(f"{reverse_package.node_addr}LED已设置{data}")
 
 
-def new_node_join(reverse_package, reverse_sub_package, data):
+def new_node_join(receipt):
     # H:代表16位短地址，8B代表64位mac地址
     fmt = "H8B"
     # 该命令只有串口协议
-    mixed_addr_tuple = struct.unpack(f'<{fmt}', data)
+    mixed_addr_tuple = struct.unpack(f'<{fmt}', receipt)
     ext_addr = ' '.join([str(i) for i in mixed_addr_tuple[1:9]])
     nwk_addr = mixed_addr_tuple[-1]
     Nodes[nwk_addr] = Node(ext_addr)
     logger.warning(f"节点加入 {nwk_addr} | {ext_addr}")
 
 
-def set_nodes(reverse_package, reverse_sub_package, data):
+def set_nodes(receipt):
     # H:代表16位短地址，8B代表64位mac地址
     fmt = "H8B"
     # 该命令只有串口协议
     fmt_len = struct.calcsize(fmt)
-    fmt = fmt * (len(data) // fmt_len)
-    mixed_addr_tuple = struct.unpack(f'<{fmt}', data)
+    fmt = fmt * (len(receipt.data) // fmt_len)
+    mixed_addr_tuple = struct.unpack(f'<{fmt}', receipt.data)
 
     l_len = len(mixed_addr_tuple) // 9
 
@@ -117,8 +117,7 @@ def write_led_sequences():
     # 内置函数处理数据
     def process_recv():
         while True:
-            data = next(c1)
-            confirm_led_setting(*data)
+            confirm_led_setting(next(c1))
 
     recv_thread = threading.Thread(target=process_recv, args=())
     recv_thread.setDaemon(True)
@@ -148,8 +147,7 @@ def cycle_sampling():
     c1 = serial.recv_data_process()
     def process_temp():
         while True:
-            data = next(c1)
-            acquire_temperature(*data)
+            acquire_temperature(next(c1))
 
     recv_thread = threading.Thread(target=process_temp,args=())
     recv_thread.setDaemon(True)
@@ -178,7 +176,7 @@ def get_nodes_info():
     # 询问节点列表
     rw.send_data(node_addr=0x0000, profile_id=0x30, serial_num=127)
     # 得到结果,并设置
-    set_nodes(*next(c1))
+    set_nodes(next(c1))
 
 
 def get_all_nodes_led_mappings():
