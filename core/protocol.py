@@ -1,14 +1,45 @@
 from collections import OrderedDict
 import struct
 ENDIAN = '<'
-BASIC_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', {'default_value': 0xabcd, 'fmt': 'H'}),
-                                       ('data_len', {'fmt': 'B'}),
+fixed_token_property = OrderedDict([('fixed_token', {'default_value': 0xabcd, 'fmt': 'H'})])
+content_property = OrderedDict([('data_len', {'fmt': 'B'}),
                                        ('node_addr', {'fmt': 'H'}),
                                        ('profile_id', {'fmt': 'B'}),
                                        ('serial_num', {'fmt': 'B'})])
+BASIC_PROTOCOL_PROPERTY = {**fixed_token_property, **content_property}
 
-_SUB_PROTOCOL_PROPERTY = OrderedDict([('fixed_token', {'default_value': 0xcb, 'fmt': 'B'}),
-                                      ('serial_num', {'fmt': 'B'})])
+sub_fixed_token_property = OrderedDict([('fixed_token', {'default_value': 0xcb, 'fmt': 'B'})])
+sub_content_property = OrderedDict([('serial_num', {'fmt': 'B'})])
+SUB_PROTOCOL_PROPERTY = {**sub_fixed_token_property, **sub_content_property}
+
+content_fields_list = ['data_len', 'node_addr', 'profile_id', 'serial_num', 'sub_fixed_token', 'sub_serial_num']
+
+
+def get_fixed_token_property(endian=ENDIAN):
+    # 返回fixed_token_property字典中的fixed_token项中的default_value、选定字节顺序后的fmt值以及fmt值在选定字节顺序后的长度
+    v = fixed_token_property['fixed_token']['default_value']
+    fmt = f"{endian}{fixed_token_property['fixed_token']['fmt']}"
+    l_fmt = struct.calcsize(fmt)
+    return v, fmt, l_fmt
+
+
+def subprotocol_fmt(with_endian, endian=ENDIAN):
+    fmt_str = ''.join([v['fmt'] for k, v in SUB_PROTOCOL_PROPERTY.items()])
+    return endian+fmt_str if with_endian else fmt_str
+
+
+def get_content_fmt(with_endian, endian=ENDIAN):
+    # 获得content_property值中完整content_fmt
+    fmt_str = "".join([value["fmt"] for value in content_property.values()])
+    # 返回content_fmt_str
+    return endian+fmt_str if with_endian else fmt_str
+
+def get_content_fmt2(with_endian,endian=ENDIAN):
+    fmt_str = content_property['node_addr']['fmt'] + \
+              content_property['profile_id']['fmt'] + \
+              content_property['serial_num']['fmt']
+
+    return endian + fmt_str if with_endian else fmt_str
 
 
 class ProtocolParamAttribute:
@@ -60,34 +91,36 @@ def create_class_protocol(protocol_name, protocol_fields):
 
 def create_class_package(package_name, protocol_type):
 
-    def package_init(self, **kwargs):
-        # 赋值顺序不影响值列表顺序打包顺序、因此关键词参数顺序不固定，但key必须与__slots__一致
-        for parameter, value in kwargs.items():
-            if parameter in self.__slots__:
-                setattr(self, parameter, value)
-            else:
-                raise Exception("invalid keyword arguments")
+    def pack(cls, data, **kwargs):
+        """
+        关键字参数的参数名必须有已经在__slots__存在的合法字段
+        :param cls:
+        :param data:
+        :param kwargs:
+        :return:
+        """
+        # 验证关键字参数参数名是否和__slots__中的字段一一对应，假如缺少某一参数就报错
+        try:
+            to_be_packaged = [kwargs[arg] for arg in cls.__slots__]
+        except Exception as why:
+            print(f"缺少字段")
+            print(why)
 
-    def package_value_list(self):
-        # 改用self.__slots__来取值,由于self.__slots的顺序固定，因此值列表顺序确定，打包顺序确定
-        return [getattr(self, arg) for arg in self.__slots__]
-
-
-    def package_produce(self, data):
         complete_fmt = protocol_type.endian + protocol_type.header_fmt + f'{len(data)}s'
         # 打包头、数据
-        values_bytes = struct.pack(complete_fmt, *self.package_value_list(), data)
+        values_bytes = struct.pack(complete_fmt, *to_be_packaged, data)
 
         return values_bytes
 
-    def package_parse(self):
-        pass
+    def unpack(self, package):
+        complete_fmt = protocol_type.endian + protocol_type.header_fmt
+        for index, parameter in enumerate(struct.unpack_from(complete_fmt, package)):
+            # 赋值属性
+            setattr(self, self.__slots__[index], parameter)
 
     return type(package_name, (), {'__slots__': tuple(v for v in protocol_type.header.keys()),
-                                   '__init__': package_init,
-                                   'produce': package_produce,
-                                   'parse': package_parse,
-                                   'package_value_list': package_value_list}
+                                   'pack': pack,
+                                   'unpack': unpack}
                 )
 
 
@@ -97,16 +130,31 @@ def create_class_fields(fields_name, protocol_type):
         # 字段顺序和slots中字段顺序一致
         package_fmt = protocol_type.endian + protocol_type.header_fmt
         # 按顺序
-        for index, parameter in enumerate(struct.unpack_from(package_fmt, package)):
+        for index, parameter in enumerate(struct.unpack(package_fmt, package)):
             # 赋值属性
             setattr(self, self.__slots__[index], parameter)
-    return type(fields_name,(object,),{'__slots__': tuple(v for v in protocol_type.header.keys()),
+    return type(fields_name,(),{'__slots__': tuple(v for v in protocol_type.header.keys()),
                                        '__init__': fields_init}
                 )
 
 
+class Receipt:
+    package_content_fmt = get_content_fmt(with_endian=True)
+    package_content_fmt_len = struct.calcsize(package_content_fmt)
+    attr = ['data_len','node_addr','profile_id','serial_num']
+
+    def __init__(self, package_content):
+        if not isinstance(package_content, bytes):
+            raise Exception("package is not a bytes")
+        for index, parameter in enumerate(struct.unpack_from(self.package_content_fmt, package_content)):
+            # 赋值属性
+            setattr(self, Receipt.attr[index], parameter)
+        #TODO:在zigbee中由协调器发送过来消息填充一些ZigBee协议的字节
+        self.sub_receipt = SubReceipt(package_content[Receipt.package_content_fmt_len:])
+
+
 # 创建子协议类、该类为协议模板且是单例
-SubProtocol = create_class_protocol('SubProtocol', _SUB_PROTOCOL_PROPERTY)
+SubProtocol = create_class_protocol('SubProtocol', SUB_PROTOCOL_PROPERTY)
 # 创建协议类、该类为协议模板且是单例
 Protocol = create_class_protocol('Protocol', BASIC_PROTOCOL_PROPERTY)
 
@@ -116,40 +164,38 @@ sub_protocol = SubProtocol.get_protocol()
 Package = create_class_package('Package', protocol)
 # 创建子包类，根据模板来创建，字段来自子协议类
 SubPackage = create_class_package('SubPackage', sub_protocol)
-# 创建字段类,包含的字段为协议类中的字段
-Fields = create_class_fields('Fields', protocol)
-# 创建子字段类，包含的字段为子协议类中的字段
-SubFields = create_class_fields('SubFields', sub_protocol)
+
 
 
 def complete_package(node_addr, profile_id, serial_num, data):
     if not isinstance(data, bytes):
         raise Exception("data is not a bytes")
     # 此处参数的赋值顺序会影响包实例的打包值顺序
-    sub_package = SubPackage(fixed_token=sub_protocol.fixed_token.default_value,
-                             serial_num=serial_num).produce(data)
+    sub_package = SubPackage().pack(data=data, fixed_token=sub_protocol.fixed_token.default_value,
+                                serial_num=serial_num)
 
-    package = Package(fixed_token=protocol.fixed_token.default_value,
+    package = Package().pack(data=sub_package,fixed_token=protocol.fixed_token.default_value,
                       data_len=len(sub_package),
                       node_addr=node_addr,
                       profile_id=profile_id,
-                      serial_num=serial_num).produce(sub_package)
+                      serial_num=serial_num)
 
     return package
-
 
 def parse_package(package):
     if not isinstance(package, bytes):
         raise Exception("package is not a bytes")
-    reverse_package = Fields(package)
-    reverse_sub_package = None
+    p = Package()
+    p.unpack(package)
+    sp = None
     data = b''
     # 假如只是来自协调器的包因为没有zigbee消息头所以不需要处理
-    if reverse_package.node_addr is 0x0000:
+    if p.node_addr is 0x0000:
         data = package[protocol.header_fmt_size:]
     else:
-        if reverse_package.data_len > 0:
-            reverse_sub_package = SubFields(package[protocol.header_fmt_size:])
-            if reverse_package.data_len-sub_protocol.header_fmt_size > 0:
+        if p.data_len > 0:
+            sp = SubPackage()
+            sp.unpack(package[protocol.header_fmt_size:])
+            if p.data_len-sub_protocol.header_fmt_size > 0:
                 data = package[protocol.header_fmt_size+sub_protocol.header_fmt_size:]
-    return reverse_package, reverse_sub_package, data
+    return p, sp, data
