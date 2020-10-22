@@ -9,7 +9,7 @@ import yaml
 import core
 import core.serial_with_protocol as Serial
 import core.util as util
-
+from functools import wraps
 __title__ = 'tempsampling'
 __version__ = '0.1.0'
 __build__ = 0x000100
@@ -51,7 +51,7 @@ class Node:
 def acquire_temperature(receipt):
     # 解包温度
     temperature = struct.unpack('<H', receipt. data)[0] / 10
-    print(f"EndDevice {receipt.node_addr} | temp{temperature}")
+    print(f"{time.time()}EndDevice {receipt.node_addr} | temp{temperature}")
     # logger.info(f"EndDevice {reverse_package.node_addr} | temp{temperature}")
 
 
@@ -99,14 +99,14 @@ def is_temp_receipt(profile_id):
     return True if profile_id ^ 0x10 else False
 
 
-
-# todo:改写成上下文管理器，每次创建一个任务后都执行一次该函数
-
-lock = threading.Lock()
-def serial_num_self_increasing():
-    global SERIAL_NUM
-    with lock:
+def serial_num_increasing(func):
+    @wraps(func)
+    def wrapped_function(*args, **kwargs):
+        global SERIAL_NUM
         SERIAL_NUM += 1
+        return func(*args, **kwargs)
+    return wrapped_function
+
 
 
 def write_led_sequences():
@@ -149,23 +149,26 @@ def cycle_sampling():
         while True:
             acquire_temperature(next(c1))
 
+    def setup():
+        while True:
+            # 获得现存短地址列表
+            node_short_addr_list = Nodes.keys()
+            if node_short_addr_list:
+                for node_short_addr in node_short_addr_list:
+                    if TEMP_SAMPLING_FLAG:
+                        serial.send_data(node_short_addr, 0x10, SERIAL_NUM)
+                    else:
+                        # 退出整理
+                        exit()
+                    time.sleep(2)
+            else:
+                print("there is no node")
+                time.sleep(5)
     recv_thread = threading.Thread(target=process_temp,args=())
     recv_thread.setDaemon(True)
     recv_thread.start()
-    while True:
-        # 获得现存短地址列表
-        node_short_addr_list = Nodes.keys()
-        if node_short_addr_list:
-            for node_short_addr in node_short_addr_list:
-                if TEMP_SAMPLING_FLAG:
-                    serial.send_data(node_short_addr, 0x10, SERIAL_NUM)
-                else:
-                    # 退出整理
-                    exit()
-                time.sleep(1)
-        else:
-            print("there is no node")
-            time.sleep(5)
+    setup()
+
 
 
 # 询问zigbee节点列表
