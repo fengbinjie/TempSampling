@@ -57,6 +57,7 @@ def acquire_temperature(receipt):
 
 def confirm_led_setting(receipt):
     print(receipt.data)
+    return receipt.serial_num
     # logger.info(f"{reverse_package.node_addr}LED已设置{data}")
 
 
@@ -95,10 +96,6 @@ def set_nodes(receipt):
 TEMP_SAMPLING_FLAG = False
 
 
-def is_temp_receipt(profile_id):
-    return True if profile_id ^ 0x10 else False
-
-
 def serial_num_increasing(func):
     @wraps(func)
     def wrapped_function(*args, **kwargs):
@@ -114,13 +111,16 @@ def write_led_sequences():
     serial = get_serial()
     # 接收数据线程
     c1 = serial.recv_data_process()
+    serial_num_list = []
+    send_done = False
     # 内置函数处理数据
     def process_recv():
-        while True:
-            confirm_led_setting(next(c1))
+        while len(serial_num_list) > 0 or not send_done:
+            serial_num = confirm_led_setting(next(c1))
+            serial_num_list.remove(serial_num)
 
+    global SERIAL_NUM
     recv_thread = threading.Thread(target=process_recv, args=())
-    recv_thread.setDaemon(True)
     recv_thread.start()
     for short_addr, node in Nodes.items():
         if node.led_file_path:
@@ -128,8 +128,10 @@ def write_led_sequences():
             led_sequence = [v for led in led_sequence for v in led]
             led_sequence_bytes = struct.pack(f'<{len(led_sequence)}H', *led_sequence)
             serial.send_data(short_addr, 0x20, SERIAL_NUM, data=led_sequence_bytes)
+            serial_num_list.append(SERIAL_NUM)
+            SERIAL_NUM += 1
+    send_done = True
     # todo:使用等待时间不合理，存储流水号后每接收到一条回复去掉存储的流水号，全部去除后关闭
-    time.sleep(2)
 
 def check_led_exist(node_mac_addr):
     if node_mac_addr:
@@ -138,6 +140,19 @@ def check_led_exist(node_mac_addr):
             return True
     return False
 
+def setup(send_func, recv_func):
+    # 得到串口
+    serial = get_serial()
+    # 接收数据线程
+    c1 = serial.recv_data_process()
+
+    def recv_process():
+        while True:
+            recv_func(next(c1))
+    recv_thread = threading.Thread(target=recv_process, args=())
+    recv_thread.setDaemon(True)
+    recv_thread.start()
+    send_func()
 
 # TODO:改成生成器
 def cycle_sampling():
@@ -199,6 +214,14 @@ def remove_tempsampling_flag():
     global TEMP_SAMPLING_FLAG
     TEMP_SAMPLING_FLAG = False
 
+def detect_serial_ports():
+    port_list = Serial.find_serial_port_list()
+    fmt_ports_str = ''
+    if port_list:
+        for port in port_list:
+            # TODO:输出格式化
+            fmt_ports_str += f'|\t{port.device}\t|\t{port.description}\t|\n'
+    return fmt_ports_str
 
 def main():
     def args_func(args):
@@ -210,7 +233,7 @@ def main():
     def port_args_func(args):
         # 列出当前所有串口
         if args.ports:
-            ports = Serial.find_serial_port_list()
+            ports = detect_serial_ports()
             print(ports if ports else 'there is no port')
 
         # 选择指定串口去通信
@@ -241,7 +264,6 @@ def main():
     def temp_args_func(args):
         # 温度采集任务开始
         if args.temp_start:
-            # TODO:开始循环采集温度任务
             get_nodes_info()
             set_tempsampling_flag()
             cycle_sampling()
