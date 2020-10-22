@@ -111,27 +111,25 @@ def write_led_sequences():
     serial = get_serial()
     # 接收数据线程
     c1 = serial.recv_data_process()
-    serial_num_list = []
+    node_list = []
     send_done = False
     # 内置函数处理数据
     def process_recv():
-        while len(serial_num_list) > 0 or not send_done:
-            serial_num = confirm_led_setting(next(c1))
-            serial_num_list.remove(serial_num)
+        while len(node_list) > 0 or not send_done:
+            node_addr = confirm_led_setting(next(c1))
+            node_list.remove(node_addr)
 
-    global SERIAL_NUM
     recv_thread = threading.Thread(target=process_recv, args=())
     recv_thread.start()
     for short_addr, node in Nodes.items():
         if node.led_file_path:
-            led_sequence = util.get_setting(node.led_file_path)
-            led_sequence = [v for led in led_sequence for v in led]
-            led_sequence_bytes = struct.pack(f'<{len(led_sequence)}H', *led_sequence)
-            serial.send_data(short_addr, 0x20, SERIAL_NUM, data=led_sequence_bytes)
-            serial_num_list.append(SERIAL_NUM)
-            SERIAL_NUM += 1
+            # 获得灯语设置
+            lamp_signal = util.get_setting(node.led_file_path)
+            data = [step_property for flash_step in lamp_signal for step_property in flash_step]
+            data_bytes = struct.pack(f'<{len(data)}H', *data)
+            serial.send_data(short_addr, 0x20, data=data_bytes)
+            node_list.append(short_addr)
     send_done = True
-    # todo:使用等待时间不合理，存储流水号后每接收到一条回复去掉存储的流水号，全部去除后关闭
 
 def check_led_exist(node_mac_addr):
     if node_mac_addr:
