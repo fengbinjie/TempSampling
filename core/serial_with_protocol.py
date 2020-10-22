@@ -21,6 +21,8 @@ class ReadWrite:
         self.sendCount = 0
         self.read_interval = interval
         self.read_buf = queue.Queue()
+        # 流水号
+        self.serial_num = 0
         # self.serialNumList = []
         # self.currentSentPacket = None
         # self.lostPacketList = []
@@ -72,8 +74,6 @@ class ReadWrite:
     #         ba.clear()
     #         state = 0b00000001
     #         while self.com.inWaiting():
-    #             # TODO: 去掉协议
-    #             # TODO: 创建一个类似zigbee中mtOSALSerialData_t的类，包含有效信息
     #             x = self.com.read()
     #             ch = ord(x)
     #             if state & 0b00000001:
@@ -103,7 +103,6 @@ class ReadWrite:
     #                 # 验证校验码正确
     #                 if ord(pack_check_num(ba)) == ch:
     #                     self.feedBackCount += 1
-    #                     # TODO:转化为多字段的元祖，而不是现有的包
     #                     fields = protocol.parse_package(bytes(ba))
     #                     yield fields
     #                     # self.read_buf.put(fields)
@@ -113,7 +112,7 @@ class ReadWrite:
     #                 state = 0b00000001
     #         time.sleep(self.read_interval)
 
-    def send_data(self, node_addr, profile_id, serial_num, data=b''):
+    def send_data(self, node_addr, profile_id, data=b''):
 
         if self.com.is_open:
             # 打包
@@ -122,9 +121,9 @@ class ReadWrite:
                                                 data_len=len(data)+sub_header_len,
                                                 node_addr=node_addr,
                                                 profile_id=profile_id,
-                                                serial_num=serial_num,
+                                                serial_num=self.serial_num,
                                                 sub_fixed_token=sub_header_fixed_token,
-                                                sub_serial_num=serial_num,
+                                                sub_serial_num=self.serial_num,
                                                 )
             # 加上校验值
             package = package + pack_check_num(package)
@@ -133,7 +132,8 @@ class ReadWrite:
             except Exception as why:
                 raise why
             else:
-                self.sendCount += 1
+                self.sendCount += 1  # 发送总数加1
+                self.serial_num += 1  # 流水号加1
                 return send_len
 
     def close(self):
@@ -155,17 +155,11 @@ class ReadWrite:
                 raise why
 
 
-def detect_serial_port():
-    port_list = find_serial_port_list()
-    if port_list:
-        for port in port_list:
-            # TODO:输出格式化
-            pass
-    return port_list
+
 
 
 def find_serial_port_list():
-    return [port.device for port in sorted(serial.tools.list_ports.comports())]
+    return [port for port in sorted(serial.tools.list_ports.comports())]
 
 
 @contextlib.contextmanager
@@ -208,7 +202,7 @@ if __name__ == '__main__':
     t1.setDaemon(True)
     t1.start()
     while True:
-        rw.send_data(node_addr=0x4285, profile_id=0x10, serial_num=127)
+        rw.send_data(node_addr=0x4285, profile_id=0x10)
         time.sleep(1)
         print(num, rw.read_buf.get())
         num += 1

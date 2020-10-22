@@ -23,7 +23,6 @@ Nodes = {}
 # 假如不存在任何映射则赋值为空字典
 node_led_mapping = util.get_setting(os.path.join(core.PROJECT_DIR, "led_node_mapping.yml")) or {}
 
-SERIAL_NUM = 0
 logger = logging.getLogger('asyncio')
 
 
@@ -57,7 +56,7 @@ def acquire_temperature(receipt):
 
 def confirm_led_setting(receipt):
     print(receipt.data)
-    return receipt.serial_num
+    return receipt.node_addr
     # logger.info(f"{reverse_package.node_addr}LED已设置{data}")
 
 
@@ -169,7 +168,7 @@ def cycle_sampling():
             if node_short_addr_list:
                 for node_short_addr in node_short_addr_list:
                     if TEMP_SAMPLING_FLAG:
-                        serial.send_data(node_short_addr, 0x10, SERIAL_NUM)
+                        serial.send_data(node_short_addr, 0x10)
                     else:
                         # 退出整理
                         exit()
@@ -190,7 +189,7 @@ def get_nodes_info():
     # 获得数据接收生成器
     c1 = rw.recv_data_process()
     # 询问节点列表
-    rw.send_data(node_addr=0x0000, profile_id=0x30, serial_num=127)
+    rw.send_data(node_addr=0x0000, profile_id=0x30)
     # 得到结果,并设置
     set_nodes(next(c1))
 
