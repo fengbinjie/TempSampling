@@ -1,5 +1,6 @@
 import argparse
 import logging
+import logging.config
 import os
 import struct
 import threading
@@ -23,7 +24,15 @@ Nodes = {}
 # 假如不存在任何映射则赋值为空字典
 node_led_mapping = util.get_setting(os.path.join(core.PROJECT_DIR, "led_node_mapping.yml")) or {}
 
-logger = logging.getLogger('asyncio')
+try:
+    dict_conf = util.get_setting(os.path.join(core.PROJECT_DIR, "log_setting.yml"))
+    print(dict_conf)
+    logging.config.dictConfig(dict_conf)
+except Exception as why:
+    print(why, "\n配置文件不存在或配置错误")
+    exit()
+# todo:写上下文管理器函数，出现错误就退出
+logger = logging.getLogger('test')
 
 
 def get_serial():
@@ -50,21 +59,22 @@ class Node:
 def acquire_temperature(receipt):
     # 解包温度
     temperature = struct.unpack('<H', receipt. data)[0] / 10
-    print(f"{time.time()}EndDevice {receipt.node_addr} | temp{temperature}")
-    # logger.info(f"EndDevice {reverse_package.node_addr} | temp{temperature}")
+    logger.info(f"EndDevice {receipt.node_addr} | temp{temperature}")
 
 
 def confirm_led_setting(receipt):
-    print(receipt.data)
+    result = struct.unpack('<B', receipt.data)[0]
+    result = True if result == 1 else False
+    logger.info(f"{receipt.node_addr}LED已设置{result}")
     return receipt.node_addr
-    # logger.info(f"{reverse_package.node_addr}LED已设置{data}")
+
 
 
 def new_node_join(receipt):
     # H:代表16位短地址，8B代表64位mac地址
     fmt = "H8B"
     # 该命令只有串口协议
-    mixed_addr_tuple = struct.unpack(f'<{fmt}', receipt)
+    mixed_addr_tuple = struct.unpack(f'<{fmt}', receipt.data)
     ext_addr = ' '.join([str(i) for i in mixed_addr_tuple[1:9]])
     nwk_addr = mixed_addr_tuple[-1]
     Nodes[nwk_addr] = Node(ext_addr)

@@ -5,8 +5,9 @@ import serial.tools.list_ports
 import core.protocol as protocol
 import struct
 import queue
+import logging
 
-
+logger = logging.getLogger('test')
 sub_header_len = protocol.sub_header_len()
 header_fixed_token = protocol.BASIC_PROTOCOL_PROPERTY['fixed_token']['default_value']
 sub_header_fixed_token = protocol.SUB_PROTOCOL_PROPERTY['sub_fixed_token']['default_value']
@@ -133,8 +134,15 @@ class ReadWrite:
                 raise why
             else:
                 self.sendCount += 1  # 发送总数加1
-                self.serial_num += 1  # 流水号加1
+                self._serial_num_plus_one()  # 流水号加1
                 return send_len
+
+    def _serial_num_plus_one(self):
+        """
+        假如流水号小于255则流水号加一,否则归0
+        :return: None
+        """
+        self.serial_num = self.serial_num+1 if self.serial_num < 255 else 0
 
     def close(self):
         self.receiveProgressStop = False

@@ -1,7 +1,6 @@
 formatters:
   time_formatter:
-    format: '%(asctime)s - %(name)s - %(pathname)s - %(lineno)d - %(levelname)s -
-      %(message)s'
+    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 handlers:
   consoleHandler:
     class: logging.StreamHandler
@@ -15,13 +14,11 @@ handlers:
     formatter: time_formatter
     level: DEBUG
     maxBytes: 1000000000
-root:
-  handlers:
-  - consoleHandler
-  - fileHandler
-  level: DEBUG
-asyncio:
-  handlers:
-  - fileHandler
-  level: DEBUG
+loggers:
+  test:
+    handlers: [consoleHandler]
+    level: DEBUG
+  run:
+    handlers: [fileHandler]
+    level: DEBUG
 version: 1
