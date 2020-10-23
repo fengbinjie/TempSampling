@@ -203,11 +203,18 @@ def get_nodes_info():
 
 
 def get_all_nodes_led_mappings():
+    all_node_led_mappings = []
+
     for node in Nodes.values():
-        # 其中是否存在现存节点
-        # 以一个字典返回现存节点和文件地址
-        node_led_mapping.setdefault(node.mac_addr, node.led_file_path)
-    return node_led_mapping
+        # 其中是否存在现存节点,是就把节点从node_led_mapping中删除
+        if node.mac_addr in node_led_mapping:
+            node_led_mapping.pop(node.mac_addr)
+        # 添加在线节点
+        all_node_led_mappings.append(('Y', node.mac_addr, node.led_file_path))
+    # 添加不在线的节点
+    for k in node_led_mapping:
+        all_node_led_mappings.append(('N', k, node_led_mapping[k]))
+    return all_node_led_mappings
 
 
 def set_tempsampling_flag():
@@ -275,9 +282,7 @@ def main():
             get_nodes_info()
             # 获得所有节点长地址和灯语的映射（包括在线的和未在线但被记录在led_node_mapping.yml文件中的）
             led_node_mapping = get_all_nodes_led_mappings()
-            datasheet = [('node', 'dir')]
-            for k in led_node_mapping:
-                datasheet.append((str(k), led_node_mapping[k]))
+            datasheet = [('on line', 'node', 'dir'), *led_node_mapping]
             print_table(datasheet)
             exit()
         if args.write:
