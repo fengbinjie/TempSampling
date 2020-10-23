@@ -26,13 +26,12 @@ node_led_mapping = util.get_setting(os.path.join(core.PROJECT_DIR, "led_node_map
 
 try:
     dict_conf = util.get_setting(os.path.join(core.PROJECT_DIR, "log_setting.yml"))
-    print(dict_conf)
     logging.config.dictConfig(dict_conf)
 except Exception as why:
     print(why, "\n配置文件不存在或配置错误")
     exit()
 # todo:写上下文管理器函数，出现错误就退出
-logger = logging.getLogger('test')
+logger = logging.getLogger('run')
 
 
 def get_serial():
@@ -161,7 +160,6 @@ def setup(send_func, recv_func):
     recv_thread.start()
     send_func()
 
-# TODO:改成生成器
 def cycle_sampling():
     # 得到串口
     serial = get_serial()
@@ -221,27 +219,46 @@ def remove_tempsampling_flag():
     global TEMP_SAMPLING_FLAG
     TEMP_SAMPLING_FLAG = False
 
-def detect_serial_ports():
-    port_list = Serial.find_serial_port_list()
-    fmt_ports_str = ''
-    if port_list:
-        for port in port_list:
-            # TODO:输出格式化
-            fmt_ports_str += f'|\t{port.device}\t|\t{port.description}\t|\n'
-    return fmt_ports_str
+
+def print_table(datasheet):
+    """
+    datasheet是一个列表，列表中的元素是列表，且长度相同，第一个元素是表的表头,其余都是数据
+    二级列表中的每一个元素都是字符串
+    :param datasheet:
+    :return: none
+    """
+    # 表头
+    table = util.TableDisplay('No.', *datasheet[0])
+    no = 1
+    # 数据部分
+    for row in datasheet[1:]:
+        table.add_row(str(no), *row)
+        no += 1
+    print(table)
+
 
 def main():
     def args_func(args):
         if args.nodes:
             get_nodes_info()
+            datasheet = [('network address', 'extend address')]
             for short_addr, node in Nodes.items():
-                print(hex(short_addr), node.mac_addr)
+                datasheet.append(('0x{:x}'.format(short_addr), node.mac_addr))
+            print_table(datasheet)
+
+
 
     def port_args_func(args):
         # 列出当前所有串口
         if args.ports:
-            ports = detect_serial_ports()
-            print(ports if ports else 'there is no port')
+            ports = Serial.find_serial_port_list()
+            if ports:
+                datasheet = [("port\'s device", "port\'s description")]
+                for port in ports:
+                    datasheet.append((port.device, port.description))
+                print_table(datasheet)
+            else:
+                print('there is no port')
 
         # 选择指定串口去通信
         if args.select_port:
@@ -258,8 +275,10 @@ def main():
             get_nodes_info()
             # 获得所有节点长地址和灯语的映射（包括在线的和未在线但被记录在led_node_mapping.yml文件中的）
             led_node_mapping = get_all_nodes_led_mappings()
-            # TODO:格式化输出
-            print(led_node_mapping)
+            datasheet = [('node', 'dir')]
+            for k in led_node_mapping:
+                datasheet.append((str(k), led_node_mapping[k]))
+            print_table(datasheet)
             exit()
         if args.write:
             # 设置某个节点的灯语
@@ -289,8 +308,8 @@ def main():
     parser.set_defaults(func=args_func)
 
     sub_parsers = parser.add_subparsers(help='sub-command help')
-    #todo:help属性增加
-    port_parser = sub_parsers.add_parser('port', help='port')
+
+    port_parser = sub_parsers.add_parser('port', help='port 相关操作')
     # 获得所有串口
     port_parser.add_argument('-l',
                              '--list',
