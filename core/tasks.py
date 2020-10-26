@@ -31,7 +31,7 @@ except Exception as why:
     print(why, "\n配置文件不存在或配置错误")
     exit()
 # todo:写上下文管理器函数，出现错误就退出
-logger = logging.getLogger('run')
+logger = logging.getLogger('test')
 
 
 def get_serial():
@@ -123,6 +123,7 @@ def write_led_sequences():
     send_done = False
     # 内置函数处理数据
     def process_recv():
+        # 当列表长度大于0或还没发送完时
         while len(node_list) > 0 or not send_done:
             node_addr = confirm_led_setting(next(c1))
             node_list.remove(node_addr)
@@ -145,6 +146,43 @@ def check_led_exist(node_mac_addr):
         if node_mac_addr in led_dict.keys() and os.path.exists(led_dict[node_mac_addr]):
             return True
     return False
+
+def nodes_live():
+    # 得到串口
+    serial = get_serial()
+    # 接收数据线程
+    c1 = serial.recv_data_process()
+    node_list = []
+    send_done = False
+    def process_temp():
+        # 消息未发送完毕或消息未全部接收完毕
+        while len(node_list) > 0 or not send_done:
+            # 此处会一直等待消息，直到程序退出或有消息进来
+            try:
+                # 未接受过数据
+                receipt = next(c1)
+            except StopIteration:
+                break
+            else:
+                node_list.remove(receipt.node_addr)
+    def setup():
+        # 获得现存短地址列表
+        node_short_addr_list = Nodes.keys()
+        if node_short_addr_list:
+            for node_short_addr in node_short_addr_list:
+                serial.send_data(node_short_addr, 0x31)
+                node_list.append(node_short_addr)
+
+    recv_thread = threading.Thread(target=process_temp, args=())
+    recv_thread.setDaemon(False)
+    recv_thread.start()
+    setup()
+    send_done = True
+    # 定时2秒，在2秒钟之内接收
+    time.sleep(2)
+    serial.receiveProgressStop = True
+    for node in node_list:
+        Nodes.pop(node)
 
 def setup(send_func, recv_func):
     # 得到串口
@@ -200,6 +238,7 @@ def get_nodes_info():
     rw.send_data(node_addr=0x0000, profile_id=0x30)
     # 得到结果,并设置
     set_nodes(next(c1))
+    # todo:协调器出现问题时（会卡在recv_data_process函数中）设置一个定时器关闭
 
 
 def get_all_nodes_led_mappings():
@@ -248,6 +287,7 @@ def main():
     def args_func(args):
         if args.nodes:
             get_nodes_info()
+            nodes_live()
             datasheet = [('network address', 'extend address')]
             for short_addr, node in Nodes.items():
                 datasheet.append(('0x{:x}'.format(short_addr), node.mac_addr))
