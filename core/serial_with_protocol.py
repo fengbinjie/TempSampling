@@ -9,8 +9,7 @@ import logging
 
 logger = logging.getLogger('test')
 sub_header_len = protocol.sub_header_len()
-header_fixed_token = protocol.BASIC_PROTOCOL_PROPERTY['fixed_token']['default_value']
-sub_header_fixed_token = protocol.SUB_PROTOCOL_PROPERTY['sub_fixed_token']['default_value']
+header_fixed_token = protocol.SERIAL_MSG_PROTOCOL['fixed_token']['default_value']
 
 
 class ReadWrite:
@@ -23,7 +22,7 @@ class ReadWrite:
         self.read_interval = interval
         self.read_buf = queue.Queue()
         # 流水号
-        self.serial_num = 0
+        self.seq_num = 0
         # self.serialNumList = []
         # self.currentSentPacket = None
         # self.lostPacketList = []
@@ -60,12 +59,14 @@ class ReadWrite:
                     # 拼接固定位、长度、数据得到完整的数据包
                     package = bytes_unknown_fixed_token+data_len_fragment+data_fragment
                     # 检查校验位
+                    print(package)
                     if check(package) == ord(self.com.read()):
                         # 创建回执
                         receipt = protocol.parse_package(package)
                         self.feedBackCount += 1
                         yield receipt
-            time.sleep(self.read_interval)
+            else:
+                time.sleep(self.read_interval)
 
     # def recv_data_process1(self):
     #     ba = bytearray()
@@ -113,36 +114,50 @@ class ReadWrite:
     #                 state = 0b00000001
     #         time.sleep(self.read_interval)
 
-    def send_data(self, node_addr, profile_id, data=b''):
+    def send_to_coordinate(self, short_addr, profile_id, data=b''):
+        if self.com.is_open:
+            # 打包
+            package = protocol.coordinate_package(data,
+                                                fixed_token=header_fixed_token,
+                                                data_len=len(data),
+                                                profile_id=profile_id,
+                                                short_addr=short_addr,
+                                                seq_num=self.seq_num,
+                                                )
+            self._send_data(package)
+
+    def send_to_node(self, short_addr, profile_id, data=b''):
 
         if self.com.is_open:
             # 打包
-            package = protocol.complete_package(data,
+            package = protocol.node_package(data,
                                                 fixed_token=header_fixed_token,
                                                 data_len=len(data)+sub_header_len,
-                                                node_addr=node_addr,
+                                                short_addr=short_addr,
                                                 profile_id=profile_id,
-                                                serial_num=self.serial_num,
-                                                sub_fixed_token=sub_header_fixed_token,
-                                                sub_serial_num=self.serial_num,
+                                                seq_num=self.seq_num,
+                                                sub_seq_num=self.seq_num,
                                                 )
-            # 加上校验值
-            package = package + pack_check_num(package)
-            try:
-                send_len = self.com.write(package)
-            except Exception as why:
-                raise why
-            else:
-                self.sendCount += 1  # 发送总数加1
-                self._serial_num_plus_one()  # 流水号加1
-                return send_len
+            self._send_data(package)
+
+    def _send_data(self, package):
+        # 加上校验值
+        package = package + pack_check_num(package)
+        try:
+            send_len = self.com.write(package)
+        except Exception as why:
+            raise why
+        else:
+            self.sendCount += 1  # 发送总数加1
+            self._serial_num_plus_one()  # 流水号加1
+            return send_len
 
     def _serial_num_plus_one(self):
         """
         假如流水号小于255则流水号加一,否则归0
         :return: None
         """
-        self.serial_num = self.serial_num+1 if self.serial_num < 255 else 0
+        self.seq_num = self.seq_num + 1 if self.seq_num < 255 else 0
 
     def close(self):
         self.receiveProgressStop = False
@@ -210,7 +225,7 @@ if __name__ == '__main__':
     t1.setDaemon(True)
     t1.start()
     while True:
-        rw.send_data(node_addr=0x4285, profile_id=0x10)
+        rw.send_to_node(node_addr=0x4285, profile_id=0x10)
         time.sleep(1)
         print(num, rw.read_buf.get())
         num += 1

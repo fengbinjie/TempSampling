@@ -104,12 +104,11 @@ def set_nodes(receipt):
 TEMP_SAMPLING_FLAG = False
 
 
-def serial_num_increasing(func):
+def log_result(func):
     @wraps(func)
-    def wrapped_function(*args, **kwargs):
-        global SERIAL_NUM
-        SERIAL_NUM += 1
-        return func(*args, **kwargs)
+    def wrapped_function(receipt):
+        logger.info(f'{receipt.node_addr} | {receipt.data} | {receipt.serial_num}')
+        return func(receipt)
     return wrapped_function
 
 
@@ -136,7 +135,7 @@ def write_led_sequences():
             lamp_signal = util.get_setting(node.led_file_path)
             data = [step_property for flash_step in lamp_signal for step_property in flash_step]
             data_bytes = struct.pack(f'<{len(data)}H', *data)
-            serial.send_data(short_addr, 0x20, data=data_bytes)
+            serial.send_to_node(short_addr, 0x20, data=data_bytes)
             node_list.append(short_addr)
     send_done = True
 
@@ -146,6 +145,9 @@ def check_led_exist(node_mac_addr):
         if node_mac_addr in led_dict.keys() and os.path.exists(led_dict[node_mac_addr]):
             return True
     return False
+    # todo:节点中途掉电，重新上电时，服务器收到消息，向节点询问是否已经设置了led,如果没有则再发送led灯语，否则节点发送确认已经设置信号回来
+    # todo:将这些簇ID改为endpoint，对应创建多个任务
+    # todo:协议四字节对齐，创建结构体或共用体，头是结构体，数据是共用体
 
 def nodes_live():
     # 得到串口
@@ -170,7 +172,7 @@ def nodes_live():
         node_short_addr_list = Nodes.keys()
         if node_short_addr_list:
             for node_short_addr in node_short_addr_list:
-                serial.send_data(node_short_addr, 0x31)
+                serial.send_to_node(node_short_addr, 0x30)
                 node_list.append(node_short_addr)
 
     recv_thread = threading.Thread(target=process_temp, args=())
@@ -214,7 +216,7 @@ def cycle_sampling():
             if node_short_addr_list:
                 for node_short_addr in node_short_addr_list:
                     if TEMP_SAMPLING_FLAG:
-                        serial.send_data(node_short_addr, 0x10)
+                        serial.send_to_node(node_short_addr, 0x10)
                     else:
                         # 退出整理
                         exit()
@@ -235,7 +237,7 @@ def get_nodes_info():
     # 获得数据接收生成器
     c1 = rw.recv_data_process()
     # 询问节点列表
-    rw.send_data(node_addr=0x0000, profile_id=0x30)
+    rw.send_to_coordinate(short_addr=0x0000, profile_id=0xf0)
     # 得到结果,并设置
     set_nodes(next(c1))
     # todo:协调器出现问题时（会卡在recv_data_process函数中）设置一个定时器关闭

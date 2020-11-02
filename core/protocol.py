@@ -1,35 +1,33 @@
 from collections import OrderedDict
 import struct
 ENDIAN = '<'
-fixed_token_property = OrderedDict([('fixed_token', {'default_value': 0xabcd, 'fmt': 'H'})])
-content_property = OrderedDict([('data_len', {'fmt': 'B'}),
-                                       ('node_addr', {'fmt': 'H'}),
-                                       ('profile_id', {'fmt': 'B'}),
-                                       ('serial_num', {'fmt': 'B'})])
-BASIC_PROTOCOL_PROPERTY = {**fixed_token_property, **content_property}
+fixed_fields = OrderedDict([('fixed_token', {'default_value': 0xabcd, 'fmt': 'H'})])
+frame_control_fields = OrderedDict([('data_len', {'fmt': 'B'}),
+                                    ('profile_id', {'fmt': 'B'}),
+                                    ('short_addr', {'fmt': 'H'}),
+                                    ('seq_num', {'fmt': 'H'})])
+SERIAL_MSG_PROTOCOL = {**fixed_fields, **frame_control_fields}
 
-sub_fixed_token_property = OrderedDict([('sub_fixed_token', {'default_value': 0xcb, 'fmt': 'B'})])
-sub_content_property = OrderedDict([('sub_serial_num', {'fmt': 'B'})])
-SUB_PROTOCOL_PROPERTY = {**sub_fixed_token_property, **sub_content_property}
+AIR_MSG_PROTOCOL = OrderedDict([('sub_seq_num', {'fmt': 'H'})])
 
 
 def sub_header_len(endian=ENDIAN):
-    fmt_str = ''.join([v.get('fmt') for v in SUB_PROTOCOL_PROPERTY.values()])
+    fmt_str = ''.join([v.get('fmt') for v in AIR_MSG_PROTOCOL.values()])
     return struct.calcsize(endian+fmt_str)
 
 
 def get_fixed_token_property(endian=ENDIAN):
     # 返回fixed_token_property字典中的fixed_token项中的default_value、选定字节顺序后的fmt值以及fmt值在选定字节顺序后的长度
-    v = fixed_token_property['fixed_token']['default_value']
-    fmt = f"{endian}{fixed_token_property['fixed_token']['fmt']}"
+    v = fixed_fields['fixed_token']['default_value']
+    fmt = f"{endian}{fixed_fields['fixed_token']['fmt']}"
     l_fmt = struct.calcsize(fmt)
     return v, fmt, l_fmt
 
 
 def unfixed_header_fmt(with_endian, endian=ENDIAN):
-    fmt_str = content_property['node_addr']['fmt'] + \
-              content_property['profile_id']['fmt'] + \
-              content_property['serial_num']['fmt']
+    fmt_str = frame_control_fields['short_addr']['fmt'] + \
+              frame_control_fields['profile_id']['fmt'] + \
+              frame_control_fields['seq_num']['fmt']
 
     return endian + fmt_str if with_endian else fmt_str
 
@@ -37,7 +35,7 @@ def unfixed_header_fmt(with_endian, endian=ENDIAN):
 def create_class_header(header_name, header_type):
     """
     head_type = BASIC_PROTOCOL_PROPERTY时 _fields = (fixed_token,data_len,node_addr,profile_id,serial_num)
-    head_type = SUB_PROTOCOL_PROPERTY时(sub_fixed_token,sub_serial_num)
+    head_type = SUB_PROTOCOL_PROPERTY时(sub_serial_num)
     :param header_name:
     :param header_type:
     :return:
@@ -90,32 +88,45 @@ def create_class_header(header_name, header_type):
 
 
 class Receipt:
-    __slots__ = tuple([*BASIC_PROTOCOL_PROPERTY.keys(), *SUB_PROTOCOL_PROPERTY.keys(), 'data'])
+    __slots__ = tuple([*SERIAL_MSG_PROTOCOL.keys(), *AIR_MSG_PROTOCOL.keys(), 'data'])
     pass
 
 
-HeaderStr = [BASIC_PROTOCOL_PROPERTY, SUB_PROTOCOL_PROPERTY]
-HeaderInstance = [create_class_header(f'Header{index}', i)() for index, i in enumerate(HeaderStr)]
+serial_msg_protocol = create_class_header('serial_msg_protocol', SERIAL_MSG_PROTOCOL)()
+air_msg_protocol = create_class_header('air_msg_protocol', AIR_MSG_PROTOCOL)()
 
 
-def complete_package(data, **kwargs):
+def node_package(data, **kwargs):
+    if not isinstance(data, bytes):
+        raise Exception("data is not a bytes")
+    package = b''
+    # 添加串口消息头
+    serial_msg_header = serial_msg_protocol.pack(**kwargs)
+    # 添加空中消息头和数据组成完整的包
+    package = serial_msg_header + air_msg_protocol.pack(**kwargs) + data
+    return package
+
+
+def coordinate_package(data, **kwargs):
     if not isinstance(data, bytes):
         raise Exception("data is not a bytes")
     # 此处参数的赋值顺序会影响包实例的打包值顺序
     package = b''
-
-    for header in HeaderInstance:
-        header_bytes = header.pack(**kwargs)
-        package = package + header_bytes
-    package = package + data
+    # 添加串口消息头
+    serial_msg_header = serial_msg_protocol.pack(**kwargs)
+    # 添加空中消息头和数据组成完整的包
+    package = serial_msg_header + data
     return package
 
 def parse_package(package):
     if not isinstance(package, bytes):
         raise Exception("package is not a bytes")
     receipt = Receipt()
-    for header in HeaderInstance:
-        package = header.unpack(receipt, package)
-    receipt.data = package
+    surplus_package = serial_msg_protocol.unpack(receipt, package)
+    # 判断是协调器消息还是节点消息
+    # 协调器消息profileId从0xf0开始增长
+    if receipt.profile_id < 0xf0:
+        surplus_package = air_msg_protocol.unpack(receipt,package)
+    receipt.data = surplus_package
     return receipt
 
