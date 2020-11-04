@@ -58,14 +58,14 @@ class Node:
 def acquire_temperature(receipt):
     # 解包温度
     temperature = struct.unpack('<H', receipt. data)[0] / 10
-    logger.info(f"EndDevice {receipt.node_addr} | temp{temperature}")
+    logger.info(f"EndDevice {receipt.short_addr} | temp{temperature}")
 
 
 def confirm_led_setting(receipt):
     result = struct.unpack('<B', receipt.data)[0]
     result = True if result == 1 else False
-    logger.info(f"{receipt.node_addr}LED已设置{result}")
-    return receipt.node_addr
+    logger.info(f"{receipt.short_addr}LED已设置{result}")
+    return receipt.short_addr
 
 
 
@@ -166,7 +166,7 @@ def nodes_live():
             except StopIteration:
                 break
             else:
-                node_list.remove(receipt.node_addr)
+                node_list.remove(receipt.short_addr)
     def setup():
         # 获得现存短地址列表
         node_short_addr_list = Nodes.keys()

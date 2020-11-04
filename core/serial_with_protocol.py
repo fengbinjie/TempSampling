@@ -157,7 +157,7 @@ class ReadWrite:
         假如流水号小于255则流水号加一,否则归0
         :return: None
         """
-        self.seq_num = self.seq_num + 1 if self.seq_num < 255 else 0
+        self.seq_num = self.seq_num + 1 if self.seq_num < 65535 else 0
 
     def close(self):
         self.receiveProgressStop = False

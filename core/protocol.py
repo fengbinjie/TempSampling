@@ -126,7 +126,7 @@ def parse_package(package):
     # 判断是协调器消息还是节点消息
     # 协调器消息profileId从0xf0开始增长
     if receipt.profile_id < 0xf0:
-        surplus_package = air_msg_protocol.unpack(receipt,package)
+        surplus_package = air_msg_protocol.unpack(receipt, surplus_package)
     receipt.data = surplus_package
     return receipt
 
