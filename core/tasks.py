@@ -57,7 +57,7 @@ class Node:
 
 def acquire_temperature(receipt):
     # 解包温度
-    temperature = struct.unpack('<H', receipt. data)[0] / 10
+    temperature = float(receipt.data)
     logger.info(f"EndDevice {receipt.short_addr} | temp{temperature}")
 
 
@@ -146,8 +146,7 @@ def check_led_exist(node_mac_addr):
             return True
     return False
     # todo:节点中途掉电，重新上电时，服务器收到消息，向节点询问是否已经设置了led,如果没有则再发送led灯语，否则节点发送确认已经设置信号回来
-    # todo:将这些簇ID改为endpoint，对应创建多个任务
-    # todo:协议四字节对齐，创建结构体或共用体，头是结构体，数据是共用体
+    # todo:改进温度的值的发送，改为字符串
 
 def nodes_live():
     # 得到串口
