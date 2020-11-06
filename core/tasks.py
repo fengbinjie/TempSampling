@@ -146,7 +146,6 @@ def check_led_exist(node_mac_addr):
             return True
     return False
     # todo:节点中途掉电，重新上电时，服务器收到消息，向节点询问是否已经设置了led,如果没有则再发送led灯语，否则节点发送确认已经设置信号回来
-    # todo:改进温度的值的发送，改为字符串
 
 def nodes_live():
     # 得到串口
