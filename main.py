@@ -12,9 +12,13 @@ def pid_is_running(pid):
     >>> pid_is_running(1000000) is None
     True
     """
-    p = subprocess.run(f'tasklist /fi "PID eq {pid}" /fO TABLE /NH'.split(), capture_output=True)
-    print(p.stdout)
-    return True if out.split()[1] == str(pid) else False
+    p = subprocess.run(f'ps {pid}'.split(), capture_output=True, universal_newlines= True)
+    out = p.stdout
+    print(out)
+    # 去掉ps命令返回的标题
+    out =out.split()[4:]
+    # 验证pid和程序名是否正确
+    return True if out[0] == str(pid) and out[3] == 'main.py' else False
 
 
 def write_pidfile_or_die(pidfile):
@@ -25,15 +29,17 @@ def write_pidfile_or_die(pidfile):
             print("Sorry, found a pidfile! Process {0} is still running.".format(pid))
             raise SystemExit
     with open(pidfile, 'w') as f:
-        f.write(str(os.getpid()))
+        f.write(f'{str(os.getpid())}\nmain.py')
     return pidfile
 
 
 if __name__ == '__main__':
-    import time
-
-    p = subprocess.run(f'tasklist'.split(), capture_output=True,universal_newlines=True)
-    print(p.stdout)
+    if os.name == "posix":
+        pass
+    else:
+        raise AssertionError("This code makes Unix-specific assumptions")
+    assert os.name == "posix", "This code makes Unix-specific assumptions"
+    # import time
     # write_pidfile_or_die('./tmp.pid')
     # time.sleep(10) # placeholder for the real work
     # print('process {0} finished work!'.format(os.getpid()))
