@@ -41,10 +41,9 @@ class Controller(cmd.Cmd):
     def do_list(self, arg):
         if arg in self.list_args:
             if arg == 'nodes':
-                print('Show all nodes in zigbee Currently')
+                print(self.proxy.list.nodes())
             elif arg == 'ports':
-                print('Show serial ports list')
-                print(self.proxy.get_serial())
+                print(self.proxy.list.ports())
         else:
             self.help_list()
 
