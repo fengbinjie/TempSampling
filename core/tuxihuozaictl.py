@@ -4,6 +4,7 @@ import xmlrpc.client
 class Controller(cmd.Cmd):
 
     def __init__(self, completekey='tab'):
+        self.proxy = xmlrpc.client.ServerProxy("http://localhost:9000")
         super().__init__(completekey)
         self.intro = "welcome"
         self.prompt = 'tuxihuozaictl' + '>'
@@ -43,6 +44,7 @@ class Controller(cmd.Cmd):
                 print('Show all nodes in zigbee Currently')
             elif arg == 'ports':
                 print('Show serial ports list')
+                print(self.proxy.get_serial())
         else:
             self.help_list()
 
