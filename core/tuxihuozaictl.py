@@ -1,10 +1,17 @@
 import cmd
+import socket
 import xmlrpc.client
 
 class Controller(cmd.Cmd):
 
     def __init__(self, completekey='tab'):
-        self.proxy = xmlrpc.client.ServerProxy("http://localhost:9000")
+        try:
+            self.proxy = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            self.proxy.connect(('localhost', 10000))
+        except:
+            #todo:修改具体异常
+            raise Exception
+
         super().__init__(completekey)
         self.intro = "welcome"
         self.prompt = 'tuxihuozaictl' + '>'
@@ -41,9 +48,11 @@ class Controller(cmd.Cmd):
     def do_list(self, arg):
         if arg in self.list_args:
             if arg == 'nodes':
-                print(self.proxy.list.nodes())
+                self.proxy.send('get_nodes'.encode())
+                print(self.proxy.recv(1024).decode())
             elif arg == 'ports':
-                print(self.proxy.list.ports())
+                self.proxy.send('get_ports'.encode())
+                self.proxy.recv(1024)
         else:
             self.help_list()
 
