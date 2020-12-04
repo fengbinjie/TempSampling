@@ -36,6 +36,28 @@ class ReadWrite:
 
     def get_sendCount(self):
         return self.sendCount
+    def recv_data_process_cpy(self):
+        while self.com.inWaiting():
+            # 读取固定标志位（未知）
+            bytes_unknown_fixed_token = self.com.read(fixed_token_fmt_len)
+            # 解包固定标志位（未知）
+            unknown_fixed_token = struct.unpack(fixed_token_fmt, bytes_unknown_fixed_token)[0]
+            # 固定标志位（未知）确定是固定标志位
+            if unknown_fixed_token == known_fixed_token:
+                # 读取数据长度
+                data_len_fragment = self.com.read()
+                # 读取数据片段（去固定标志位的消息头加上数据）
+                data_fragment = self.com.read(ord(data_len_fragment) + extra_fields_len)
+                # 拼接固定位、长度、数据得到完整的数据包
+                package = bytes_unknown_fixed_token + data_len_fragment + data_fragment
+                # 检查校验位
+                print(package)
+                if check(package) == ord(self.com.read()):
+                    # 创建回执
+                    receipt = protocol.parse_package(package)
+                    self.feedBackCount += 1
+                    yield receipt
+        return
 
     def recv_data_process(self):
         # 创建回执

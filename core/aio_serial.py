@@ -14,20 +14,25 @@ def check(buf):
         xor_result = xor_result ^ v
     return xor_result
 
-
+sent_data = b'\xcd\xab\x02\x85B\x10\x7f\xcb\x7f'
 class Output(asyncio.Protocol):
+    def __init__(self):
+        super().__init__()
+        self.shutdown = False
+
     def connection_made(self, transport):
         self.transport = transport
         print('port opened', transport)
-
-        transport.serial.rts = False  # You can manipulate Serial object via transport
         #data = b'\xcd\xab\x02\x00\x000\x7f\xcb\x7f'
-        data = b'\xcd\xab\x02\x85B\x10\x7f\xcb\x7f'
-        transport.write(data+pack_check_num(data))  # Write serial data via transport
+
+        transport.write(sent_data)  # Write serial data via transport
 
     def data_received(self, data):
-        print('data received', data)
-        self.transport.close()
+        if self.shutdown:
+            self.transport.close()
+        print(f'time { self.transport.loop.time() }>data: received {data}')
+        self.transport.loop.call_later(1,self.transport.write, sent_data)
+        self.shutdown = True
 
     def connection_lost(self, exc):
         print('port closed')
@@ -43,7 +48,7 @@ class Output(asyncio.Protocol):
 
 
 loop = asyncio.get_event_loop()
-coro = serial_asyncio.create_serial_connection(loop, Output, 'COM8', baudrate=115200)
+coro = serial_asyncio.create_serial_connection(loop, Output, '/dev/pts/1', baudrate=115200)
 loop.run_until_complete(coro)
-loop.run_forever()
+print("should be never come here")
 loop.close()

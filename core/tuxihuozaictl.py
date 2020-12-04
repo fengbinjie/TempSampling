@@ -1,16 +1,16 @@
 import cmd
 import socket
 import xmlrpc.client
-
+import time
 class Controller(cmd.Cmd):
 
     def __init__(self, completekey='tab'):
-        try:
-            self.proxy = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-            self.proxy.connect(('localhost', 10000))
-        except:
-            #todo:修改具体异常
-            raise Exception
+        # try:
+        #     self.proxy = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        #     self.proxy.connect(('localhost', 10000))
+        # except:
+        #     #todo:修改具体异常
+        #     raise Exception
 
         super().__init__(completekey)
         self.intro = "welcome"
@@ -48,11 +48,23 @@ class Controller(cmd.Cmd):
     def do_list(self, arg):
         if arg in self.list_args:
             if arg == 'nodes':
-                self.proxy.send('get_nodes'.encode())
-                print(self.proxy.recv(1024).decode())
+                try:
+                    while True:
+                        print("show nodes")
+                        time.sleep(0.5)
+                except KeyboardInterrupt:
+                    pass
+                # self.proxy.send('get_nodes'.encode())
+                # print(self.proxy.recv(1024).decode())
             elif arg == 'ports':
-                self.proxy.send('get_ports'.encode())
-                self.proxy.recv(1024)
+                # self.proxy.send('get_ports'.encode())
+                # self.proxy.recv(1024)
+                try:
+                    while True:
+                        print("show ports")
+                        time.sleep(0.5)
+                except KeyboardInterrupt:
+                    pass
         else:
             self.help_list()
 
