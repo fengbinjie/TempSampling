@@ -1,7 +1,9 @@
 import cmd
 import socket
-import xmlrpc.client
+import json
 import time
+import inspect
+
 class Controller(cmd.Cmd):
 
     def __init__(self, completekey='tab'):
@@ -18,7 +20,20 @@ class Controller(cmd.Cmd):
         self.list_args = ['nodes','ports']
         self.led_args = ['write','all']
         self.temp_args = ['start','stop']
-        self.server_info = ''
+        server_info = ('localhost', 10000)
+        self.proxy = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            self.proxy.connect(server_info)
+        except:
+            raise Exception("tuxihuozaiserver未启动")
+        else:
+            self.inspect_server()
+
+    def inspect_server(self):
+        response = self.proxy.recv(1024)
+        response = json.loads(response.decode())
+        funcs = response["feedback"]
+        self.funcs = funcs
 
     def emptyline(self):
         # 输入空行时，任何事都不做
@@ -45,28 +60,25 @@ class Controller(cmd.Cmd):
         else:
             self.help_list()
 
-    def do_list(self, arg):
-        if arg in self.list_args:
-            if arg == 'nodes':
-                try:
-                    while True:
-                        print("show nodes")
-                        time.sleep(0.5)
-                except KeyboardInterrupt:
-                    pass
-                # self.proxy.send('get_nodes'.encode())
-                # print(self.proxy.recv(1024).decode())
-            elif arg == 'ports':
-                # self.proxy.send('get_ports'.encode())
-                # self.proxy.recv(1024)
-                try:
-                    while True:
-                        print("show ports")
-                        time.sleep(0.5)
-                except KeyboardInterrupt:
-                    pass
+    def parse_args(self,args):
+        return args.split()
+
+    def do_list(self, args):
+        name = self.get_func_name()[3:] # 去掉do_部分
+        args = self.parse_args(args)
+        name = f'{name}_{args[0]}'
+        enquire = json.dumps({"enquire": name,"args": args[1:]})
+        if args[0] in self.list_args:
+            self.proxy.send(enquire.encode())
+            try:
+                print(self.proxy.recv(1024).decode())
+            except KeyboardInterrupt:
+                pass
         else:
             self.help_list()
+
+    def get_func_name(self):
+        return inspect.stack()[1][3]
 
     def help_list(self):
         print('help: Show all nodes in zigbee Currently')
