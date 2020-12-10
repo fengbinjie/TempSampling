@@ -51,7 +51,7 @@ class TableDisplay:
         # 行高
         self.row_height = 1
         # 每一列的最宽数据宽度
-        self.max_col_content_widths = [len(item) for item in headers]
+        self.max_col_content_widths = [self.get_str_print_len(item) for item in headers]
         # 存储每次添加的值[list...list]
         self.values_list = []
 
@@ -65,9 +65,9 @@ class TableDisplay:
                 raise Exception(f'传入参数值{value}不是字符串')
             # 循环，假如新的数据宽度大于旧的，就更新新列宽
             origin_width = self.max_col_content_widths[index]
-            new_width = len(value)
-            self.max_col_content_widths[index] = new_width if new_width > origin_width else origin_width
-
+            new_width = self.get_str_print_len(value)
+            if new_width > origin_width:
+                self.max_col_content_widths[index] = new_width
         self.values_list.append(items_value)  # 添加到值列表中
 
     def update_table_width(self):
@@ -93,9 +93,9 @@ class TableDisplay:
         for index, data in enumerate(data_list):
             # 获得最佳插入值位置
             col_width = self.max_col_widths[index]
-            op_location = (col_width - len(data)) // 2
+            op_location = (col_width - self.get_str_print_len(data)) // 2
             # 形成行
-            row = row + op_location * ' ' + data + (col_width - op_location - len(data)) * ' ' + '|'
+            row = row + op_location * ' ' + data + (col_width - op_location - self.get_str_print_len(data)) * ' ' + '|'
         return row
 
     def table_border(self):
@@ -127,6 +127,13 @@ class TableDisplay:
         header = header + '\n' + table_border
         return header
 
+    def get_str_print_len(self, strs):
+        length = 0
+        for _char in strs:
+            #假如是中文长度+2
+            length += 2 if '\u4e00' <= _char <= '\u9fa5' else 1
+        return length
+
     def __str__(self):
         # 更新每一列的最大宽度
         self.update_col_widths()
@@ -148,7 +155,11 @@ class TableDisplay:
 
 
 if __name__ == '__main__':
-    table = TableDisplay(['field1', 'field2', 'field3'])
-    table.add_row(['1', 'feng', 'binjie'])
-    table.add_row(['2', 'fea', 'feafea'])
+
+    table = TableDisplay('field1', 'field2eafe冯斌杰', 'field3分半')
+    table.add_row('1', 'feng冯斌杰诶', 'binjie')
+    table.add_row('2封闭呢', 'fea', 'feafea')
     print(table)
+    # import timeit
+    # t = timeit.Timer('str(table)','from __main__ import table')
+    # print(t.repeat(4, 1000))
