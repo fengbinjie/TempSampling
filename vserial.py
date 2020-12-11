@@ -9,7 +9,7 @@ def process(com,mask):
         data += com.read()
     if data:
         print(data)
-        com.write(data)
+        com.write(b"\xcd\xab\x02\xf0\x00\x00\x00\x00\x00\x00\x94")
 
 s.register(s2,selectors.EVENT_READ,process)
 

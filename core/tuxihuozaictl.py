@@ -40,7 +40,7 @@ class Controller(cmd.Cmd):
         return
 
     def default(self, line):
-        self.output(f'*** Unknown syntax: {line}')
+        print(f'*** Unknown syntax: {line}')
 
     def do_temp(self,arg):
         if arg in self.temp_args:
@@ -71,7 +71,7 @@ class Controller(cmd.Cmd):
         if args[0] in self.list_args:
             self.proxy.send(enquire.encode())
             try:
-                print(self.proxy.recv(1024).decode())
+                print(json.loads(self.proxy.recv(1024)))
             except KeyboardInterrupt:
                 pass
         else:

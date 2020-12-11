@@ -38,7 +38,6 @@ def write_setting(file, **kwargs):
 
 class TableDisplay:
     """
-    暂时不能很好的支持中文
     """
     def __init__(self, *headers):
         for header in headers:
