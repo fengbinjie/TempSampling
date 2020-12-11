@@ -17,9 +17,6 @@ class Controller(cmd.Cmd):
         super().__init__(completekey)
         self.intro = "welcome"
         self.prompt = 'tuxihuozaictl' + '>'
-        self.list_args = ['nodes','ports']
-        self.led_args = ['write','all']
-        self.temp_args = ['start','stop']
         server_info = ('localhost', 10000)
         self.proxy = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -42,17 +39,29 @@ class Controller(cmd.Cmd):
     def default(self, line):
         print(f'*** Unknown syntax: {line}')
 
-    def do_temp(self,arg):
-        if arg in self.temp_args:
-            if arg == 'start':
-                print('start to sampling temp')
-            elif arg == 'stop':
-                print('stop sampling temp')
+    def do_temp(self,args):
+        temp_args = ('start', 'stop')
+        name = self.get_func_name()[3:]  # 去掉do_部分
+        args = self.parse_args(args)
+        name = f'{name}_{args[0]}'
+        enquire = json.dumps({"enquire": name,"args": args[1:]})
+        if args[0] in temp_args:
+            self.proxy.send(enquire.encode())
+            try:
+                while True:
+                    r = json.loads(self.proxy.recv(1024))
+                    # 接收到结束符才结束
+                    if r == "eof":
+                        break
+                    print(r)
+            except KeyboardInterrupt:
+                pass
         else:
             self.help_temp()
 
     def do_led(self,arg):
-        if arg in self.list_args:
+        led_args = ('write', 'all')
+        if arg in led_args:
             if arg == 'write':
                 print('write led sequence to node\'s rom')
             elif arg == 'all':
@@ -64,11 +73,12 @@ class Controller(cmd.Cmd):
         return args.split()
 
     def do_list(self, args):
+        list_args = ('nodes', 'ports')
         name = self.get_func_name()[3:] # 去掉do_部分
         args = self.parse_args(args)
         name = f'{name}_{args[0]}'
         enquire = json.dumps({"enquire": name,"args": args[1:]})
-        if args[0] in self.list_args:
+        if args[0] in list_args:
             self.proxy.send(enquire.encode())
             try:
                 print(json.loads(self.proxy.recv(1024)))
