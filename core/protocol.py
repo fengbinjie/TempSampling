@@ -130,3 +130,8 @@ def parse_package(package):
     receipt.data = surplus_package
     return receipt
 
+import core.util as util
+
+def pack_check_num(value_bytes):
+    # 打包校验码
+    return struct.pack(f'<B', util.check(value_bytes))

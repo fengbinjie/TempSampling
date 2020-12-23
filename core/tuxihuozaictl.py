@@ -5,7 +5,7 @@ import json
 import logging
 import socket
 import sys
-
+import os
 import yaml
 
 import core
@@ -51,49 +51,50 @@ class Controller(cmd.Cmd):
 
     def __init__(self, completekey='tab'):
         # 获得配置好的日志器
-        # try:
-        #     logging.basicConfig(**default_log_config)
-        # except ValueError as why:
-        #     logging.critical("日志器配置错误\nwhy")
-        #     self.close()
-        #     exit() # 关闭资源
-        # else:
-        #     self.logger = logging.getLogger()
-        # # 获得客户端配置
-        # if not os.path.exists(default_config_path):
-        #     # 配置文件不存在，在默认地址写入默认文件
-        #     with open(file=default_config_path,mode='x') as f:
-        #         try:
-        #             yaml.dump(default_config,f)
-        #         except Exception as why:
-        #             self.logger.critical("默认客户端配置错误")
-        #             self.close()
-        #             exit()
-        #     self.config = default_config
-        # else:
-        #     # 配置文件存在，就读取配置文件
-        #     with open(default_config_path, 'r') as f:
-        #         try:
-        #             self.config = yaml.load(f,Loader=yaml.FullLoader)
-        #         except Exception as why:
-        #             self.logger.critical("客户端配置文件项目错误")
-        #             self.close()
-        #             exit()
-        #
-        # # 连接到服务器
-        # server_ip, port = self.config["address"], self.config["port"]
-        # self.proxy = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # self.proxy.settimeout(1800)
-        # try:
-        #     self.proxy.connect((server_ip, port))
-        # except Exception as why:
-        #     self.logger.critical(f"目标位置 {server_ip}:{port} 的tuxihuozaiserver无法连接")
-        #     self.close()
-        #     exit()
-        # else:
-        #     # 检视服务器
-        #     self.proxy.status = True
-        #     self.inspect_server()
+        try:
+            logging.basicConfig(**default_log_config)
+        except ValueError as why:
+            logging.critical("日志器配置错误\nwhy")
+            self.close()
+            exit() # 关闭资源
+        else:
+            self.logger = logging.getLogger()
+        # 获得客户端配置
+        if not os.path.exists(default_config_path):
+            # 配置文件不存在，在默认地址写入默认文件
+            with open(file=default_config_path,mode='x') as f:
+                try:
+                    yaml.dump(default_config,f)
+                except Exception as why:
+                    self.logger.critical("默认客户端配置错误")
+                    self.close()
+                    exit()
+            self.config = default_config
+        else:
+            # 配置文件存在，就读取配置文件
+            with open(default_config_path, 'r') as f:
+                try:
+                    self.config = yaml.load(f,Loader=yaml.FullLoader)
+                except Exception as why:
+                    self.logger.critical("客户端配置文件项目错误")
+                    self.close()
+                    exit()
+
+        # 连接到服务器
+        server_ip, port = self.config["address"], self.config["port"]
+        self.proxy = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.proxy.settimeout(1800)
+        try:
+            self.proxy.connect((server_ip, port))
+        except Exception as why:
+            self.logger.critical(f"目标位置 {server_ip}:{port} 的tuxihuozaiserver无法连接")
+            self.close()
+            exit()
+        else:
+            pass
+            # 检视服务器
+            # self.proxy.status = True
+            #self.inspect_server()
 
         # 启动交互
         super().__init__(completekey)
@@ -127,7 +128,7 @@ class Controller(cmd.Cmd):
         返回整型值代表发送的数据长度
         """
         try:
-            length = self.proxy.send(data.encode())
+            length = self.proxy.send(data)
         except socket.timeout as why:
             # todo 在屏幕上打印这个错误且不退出,返回None
             self.logger.warning(f"接收过程中出现错误，接收操作超时\n{why}")
@@ -274,8 +275,8 @@ class Controller(cmd.Cmd):
                 raise
             else:
                 self.suppress_help_out(args_list)
-                args_dict = {"sub_command": args_list[0]}
-                args_dict.update(vars(args))
+                args_dict = {"sub_command":args_list[0]}
+                args_dict["args"] = vars(args)
                 return args_dict
         else:
             self.help_list()
@@ -285,23 +286,32 @@ class Controller(cmd.Cmd):
             raise AttributeError
 
     def do_list(self, args):
+        #todo:多次执行list_nodes出现json错误
         self.logger.info(f"执行list {args['sub_command']} 命令")
         # 解析命令
         name = 'list'
-        enquire = json.dumps({"enquire": name, "args": args})
+        args["command"] =name
+        enquire = json.dumps(args)
         self.send(enquire.encode())
         try:
             result = self.recv()
+        except KeyboardInterrupt:
+            # todo:配置日志器要既打印到屏幕也打印到日志文件中
+            self.logger.warning(f"中断执行temp {args['sub_command']} 命令")
             # 有一个错误
-            if isinstance(result,bool):
-                return result
+        else:
+            # if isinstance(result,bool):
+            #     return result
             # 没有错误
             if result:
                 # 处理函数
                 print(json.loads(result))
-        except KeyboardInterrupt:
-            #todo:配置日志器要既打印到屏幕也打印到日志文件中
-            self.logger.warning(f"中断执行temp {args['sub_command']} 命令")
+            else: # 服务器退出
+                # 退出
+                self.logger.critical("服务器退出")
+                return True
+
+
 
 
     def do_exit(self, args):
@@ -386,7 +396,7 @@ class Controller(cmd.Cmd):
         关闭资源
         :return:
         """
-        if self.proxy and getattr(self.proxy,"status",False):
+        if self.proxy and (not self.proxy._closed):
             self.proxy.close()
         if getattr(self,"logger",None):
             self.logger.info("执行exit\n客户端关闭")

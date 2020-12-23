@@ -1,5 +1,10 @@
 import yaml
 
+def check(buf):
+    xor_result = 0
+    for v in buf:
+        xor_result = xor_result ^ v
+    return xor_result
 
 def get_setting(file):
     """
