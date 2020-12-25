@@ -93,6 +93,17 @@ class Controller(cmd.Cmd):
         else:
             pass
             # 检视服务器
+            ctl_info = self.proxy.getsockname()
+            peer_info = self.proxy.getpeername()
+
+            self.request = {
+                "task": None,
+                "source": f'{ctl_info[0]}:{ctl_info[1]}',
+                "dest": f'{peer_info[0]}:{peer_info[1]}',
+                "date": None,
+                "data":None,
+                "eof": True
+            }
             # self.proxy.status = True
             #self.inspect_server()
 
@@ -160,24 +171,29 @@ class Controller(cmd.Cmd):
             return result
 
     def do_temp(self,args):
+        task = f"temp_{args['sub_command']}"
         # 温度相关命令
-        self.logger.info(f"执行temp {args['sub_command']} 命令")
-        name = 'temp'
-        enquire = json.dumps({"enquire": name, "args": args})
+        self.logger.info(f"执行{task} 命令")
+        self.fill_request(task, args["args"])
+        enquire = json.dumps(self.request)
         self.send(enquire.encode())
         try:
             while True:
-                result = self.recv()
-                # 有一个错误
-                if isinstance(result, bool):
-                    return result
-                # 没有错误
-                r = json.loads(result)
-                # 接收到结束符才结束
-                if r == "eof":
-                    break
-                print(r)
+                # 当服务器主动关闭连接时，收到的数据即为None
+                response = self.recv()
+                # 数据为空服务器退出
+                if not response:
+                    # 退出
+                    self.logger.critical("服务器退出")
+                    return True
+                print(response)
+                response = json.loads(response)
+                if response["eof"]:
+                    return
+                else:
+                    pass
         except KeyboardInterrupt:
+            # todo:发送一个任务取消命令
             # todo:配置日志器要既打印到屏幕也打印到日志文件中
             self.logger.warning(f"中断执行temp {args['sub_command']} 命令")
 
@@ -241,8 +257,8 @@ class Controller(cmd.Cmd):
             temp_parser = CustomizeArgumentParser(prog="temp")
             temp_sub_parsers = temp_parser.add_subparsers(help = "temp subcommand help")
             temp_start_parser = temp_sub_parsers.add_parser('start')
-            temp_start_parser.add_argument('-i',dest="interval")
-            temp_start_parser.add_argument('-t',dest="time")
+            temp_start_parser.add_argument('-i',dest="interval",type=int)
+            temp_start_parser.add_argument('-t',dest="times", type=int)
             temp_stop_parser = temp_sub_parsers.add_parser('stop')
             temp_pause_parser = temp_sub_parsers.add_parser('pause')
             temp_resume_parser = temp_sub_parsers.add_parser('resume')
@@ -256,7 +272,10 @@ class Controller(cmd.Cmd):
                 self.suppress_help_out(args_list)
                 # 解析成功说明子命令一定没错
                 args_dict = {"sub_command":args_list[0]}
-                args_dict.update(vars(args))
+                args_dict["args"] = dict()
+                for k,v in vars(args).items():
+                    if v:
+                        args_dict["args"][k] = v
                 return args_dict
         else:
             self.help_temp()
@@ -286,33 +305,40 @@ class Controller(cmd.Cmd):
             raise AttributeError
 
     def do_list(self, args):
-        #todo:多次执行list_nodes出现json错误
-        self.logger.info(f"执行list {args['sub_command']} 命令")
+        task = f"list_{args['sub_command']}"
+        self.logger.info(f"执行{task} 命令")
         # 解析命令
-        name = 'list'
-        args["command"] =name
-        enquire = json.dumps(args)
+        self.fill_request(task,args["args"])
+        enquire = json.dumps(self.request)
         self.send(enquire.encode())
         try:
-            result = self.recv()
+            while True:
+                # 当服务器主动关闭连接时，收到的数据即为None
+                response = self.recv()
+                # 数据为空服务器退出
+                if not response:
+                    # 退出
+                    self.logger.critical("服务器退出")
+                    return True
+                print(response)
+                response = json.loads(response)
+                if response["eof"]:
+                    return
+                else:
+                    pass
+
         except KeyboardInterrupt:
             # todo:配置日志器要既打印到屏幕也打印到日志文件中
             self.logger.warning(f"中断执行temp {args['sub_command']} 命令")
             # 有一个错误
-        else:
-            # if isinstance(result,bool):
-            #     return result
-            # 没有错误
-            if result:
-                # 处理函数
-                print(json.loads(result))
-            else: # 服务器退出
-                # 退出
-                self.logger.critical("服务器退出")
-                return True
 
-
-
+    def fill_request(self,task,data):
+        import time
+        assert isinstance(task,str)
+        assert isinstance(data, dict)
+        self.request["task"] = task
+        self.request["data"] = data
+        self.request["date"] = time.asctime()
 
     def do_exit(self, args):
         # 手动退出

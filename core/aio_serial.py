@@ -18,6 +18,7 @@ class Output(asyncio.Protocol):
         self.seq_num = 0
         self.msg_fragments = []
         self.task_list = []
+        # 流水号和命令的映射
         self.task_seqnum_mapping = {}
         self.remainder = 0
         self.sent_msg_buffer = list()
@@ -74,13 +75,14 @@ class Output(asyncio.Protocol):
             self.transport.close()
 
         f, d = self.check_data(data)
-        print(f'time {self.transport.loop.time()}>data: received {d}')
+        print(f'time {self.transport.loop.time()}     >data: received {d}')
         if f:
             # 当节点离线时没有数据发出也就无法调用该函数
             # 此处判断是否该回馈是否需要向客户端发送
             if util.check(d[:-1]) == d[-1]:
                 # 创建回执
                 receipt = protocol.parse_package(d[:-1])
+                # 获得此流水号的回执处理任务
                 task = self.task_seqnum_mapping.pop(receipt.seq_num, None)
                 # 找到相应的处理函数
                 if task:
@@ -104,8 +106,6 @@ class Output(asyncio.Protocol):
         self.seq_num += 1
 
     def connection_lost(self, exc):
-        global serial_transport
-        serial_transport = None
         print('port closed')
         self.transport.loop.stop()
 
@@ -132,10 +132,15 @@ class SockOutput(asyncio.Protocol):
         self.loop = asyncio.get_event_loop()
         self.transport = None
         self.serial_output = None
+        self.peer_info = None
+        self.server_info = None
 
     def connection_made(self, transport):
         self.transport = transport
-        print('socket opened', transport)
+        server_info = self.transport.get_extra_info("sockname")
+        peer_info = self.transport.get_extra_info("peername")
+        self.peer_info = f'{peer_info[0]}:{peer_info[1]}'
+        self.server_info = f'{server_info[0]}:{server_info[1]}'
         self.serial_output = Output.self
         if not self.serial_output:
             raise Exception("连接失效")
@@ -161,14 +166,14 @@ class SockOutput(asyncio.Protocol):
         response = json.dumps(response).encode()
         self.transport.write(response)
 
-    def data_received(self, require):
+    def data_received(self, request):
         if self.shutdown:
             self.transport.close()
-        require = json.loads(require.decode())
+        request = json.loads(request.decode())
         # 获取任务
-        task = getattr(tasks, f'{require["command"]}_{require["sub_command"]}_task', None)
-        # 获取任务的参数
-        args = require["args"]
+        task = getattr(tasks, f'{request["task"]}_task', None)
+        # 获取request任务的参数
+        kwargs = request["data"]
         if task:
             # 解析参数
             pass
@@ -177,9 +182,9 @@ class SockOutput(asyncio.Protocol):
                 if isinstance(existed_task_obj,task):
                     self.notify_write("该任务正在运行")
                     return
-            new_task = task(self.serial_output,self)
+            new_task = task(self.serial_output,self,**kwargs)
             self.serial_output.task_list.append(new_task)
-            new_task.start(**args)
+            new_task.start()
 
 
 
