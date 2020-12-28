@@ -2,7 +2,7 @@ import asyncio
 import serial_asyncio
 import core.serial_with_protocol as Serial
 import json
-import core.tasks2 as tasks
+import core.action as tasks
 import core.util as util
 import core.protocol as protocol
 
@@ -144,10 +144,9 @@ class SockOutput(asyncio.Protocol):
         self.serial_output = Output.self
         if not self.serial_output:
             raise Exception("连接失效")
-        else:
             # 给串口output设置sock_output
-            if not self.serial_output.set_sock_transport(sock_transport=self):
-                raise Exception("连接失效")
+        if not self.serial_output.set_sock_transport(sock_transport=self):
+            raise Exception("连接失效")
                 #向客户端 发送错误提示信息
         # 获得连接成功后向客户端发送注册的任务函数列表
         # feedback = {"feedback":[*RemoteTasks.get_tasks(),*LocalTasks.get_tasks()]}
@@ -170,21 +169,21 @@ class SockOutput(asyncio.Protocol):
         if self.shutdown:
             self.transport.close()
         request = json.loads(request.decode())
-        # 获取任务
-        task = getattr(tasks, f'{request["task"]}_task', None)
+        # 获取action
+        action = getattr(tasks, f'{request["action"]}_action', None)
         # 获取request任务的参数
         kwargs = request["data"]
-        if task:
+        if action:
             # 解析参数
             pass
             # 替换或取消已存在的任务。暂定为取消
-            for existed_task_obj in self.serial_output.task_list:
-                if isinstance(existed_task_obj,task):
+            for existedAction in self.serial_output.task_list:
+                if isinstance(existedAction,action):
                     self.notify_write("该任务正在运行")
                     return
-            new_task = task(self.serial_output,self,**kwargs)
-            self.serial_output.task_list.append(new_task)
-            new_task.start()
+            new_action = action(self.serial_output,self,**kwargs)
+            self.serial_output.task_list.append(new_action)
+            new_action.start()
 
 
 

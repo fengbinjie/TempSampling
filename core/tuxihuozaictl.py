@@ -97,7 +97,7 @@ class Controller(cmd.Cmd):
             peer_info = self.proxy.getpeername()
 
             self.request = {
-                "task": None,
+                "action": None,
                 "source": f'{ctl_info[0]}:{ctl_info[1]}',
                 "dest": f'{peer_info[0]}:{peer_info[1]}',
                 "date": None,
@@ -171,10 +171,10 @@ class Controller(cmd.Cmd):
             return result
 
     def do_temp(self,args):
-        task = f"temp_{args['sub_command']}"
+        action = f"temp_{args['sub_command']}"
         # 温度相关命令
-        self.logger.info(f"执行{task} 命令")
-        self.fill_request(task, args["args"])
+        self.logger.info(f"执行{action} 命令")
+        self.fill_request(action, args["args"])
         enquire = json.dumps(self.request)
         self.send(enquire.encode())
         try:
@@ -305,10 +305,10 @@ class Controller(cmd.Cmd):
             raise AttributeError
 
     def do_list(self, args):
-        task = f"list_{args['sub_command']}"
-        self.logger.info(f"执行{task} 命令")
+        action = f"list_{args['sub_command']}"
+        self.logger.info(f"执行{action} 命令")
         # 解析命令
-        self.fill_request(task,args["args"])
+        self.fill_request(action,args["args"])
         enquire = json.dumps(self.request)
         self.send(enquire.encode())
         try:
@@ -332,11 +332,11 @@ class Controller(cmd.Cmd):
             self.logger.warning(f"中断执行temp {args['sub_command']} 命令")
             # 有一个错误
 
-    def fill_request(self,task,data):
+    def fill_request(self,action,data):
         import time
-        assert isinstance(task,str)
+        assert isinstance(action,str)
         assert isinstance(data, dict)
-        self.request["task"] = task
+        self.request["action"] = action
         self.request["data"] = data
         self.request["date"] = time.asctime()
 

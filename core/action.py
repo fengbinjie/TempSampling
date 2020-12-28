@@ -22,23 +22,26 @@ def format_table(datasheet):
         table.add_row(str(index), *row)
     return str(table)
 
-#任务自动的向
-class Task:
+
+class Action:
+    """
+    明确action和task的关系，action每次执行，这一次就是一个task，包括发送接收处理
+    """
     nodes = {}
     header = protocol.SERIAL_MSG_PROTOCOL['fixed_token']['default_value']
     header_len = protocol.sub_header_len()
     def __init__(self, _serial,_socket,**kwargs):
         self._serial = _serial
         self._socket = _socket
-        self.times = 1     # 执行次数，None无限次，其余都是非负数整型
-        self.interval = 2  # 任务执行时间间隔
-        self.fail_handler = None
-        self.task_id = None
-        self.cur_seq_num = None
-        self.aim = False
-        self.finished = False
+        self.task_times = 1     # action每次执行都是一次task.执行次数，None无限次，其余都是非负数整型
+        self.task_interval = 2  # task执行时间间隔
+        self.fail_handler = None # 失败处理函数的handler
+        self.action_id = None    # action的id
+        self.cur_task_num = None  # 当前action所执行的任务对应的序列号
+        self.task_finished = False # 本次task完成
+        self.action_finished = False    # action完成标志（当所有任务都已完成时）
         self.response = {
-            "task": self.__class__.__name__[:-5],
+            "action": self.__class__.__name__[:-7], #去掉_action
             "source": self._socket.server_info,
             "dest": self._socket.peer_info,
             "date": None,
@@ -60,14 +63,14 @@ class Task:
         self.response["eof"] = eof
 
     def writable(self):
-        if self.times is not None:
-            if self.times == 0:
+        if self.task_times is not None:
+            if self.task_times == 0:
                 return False
         return True
 
     def serial_write(self):
-        if self.times:
-            self.times -= 1
+        if self.task_times:
+            self.task_times -= 1
         seq_num = self._serial.get_seq_num()
         # 目的是本网关的任务，result = None
         result = self.produce(seq_num)
@@ -77,7 +80,7 @@ class Task:
             print(f'time> {self._serial.transport.loop.time()} {result}')
             # 将该任务存入任务序列号映射中，等待收到回执。根据序列号查找对应的任务来处理回执
             self._serial.task_seqnum_mapping[seq_num] = self
-            self.cur_seq_num = seq_num # 只有需要写入串口的任务才会赋予cur_seq_num
+            self.cur_task_num = seq_num # 只有需要写入串口的任务才会赋予cur_seq_num
         else:
             # 目的地是本网关的任务，直接处理发送回客户端
             self.socket_write(None)
@@ -86,21 +89,22 @@ class Task:
     def socket_write(self, receipt):
         result = self.process(receipt)
         if self._socket:
-            self.fill_response(data=result,eof=self.finished)
+            self.fill_response(data=result, eof=self.action_finished)
             self._socket.notify_write(self.response)
-        if self.finished:
+        if self.action_finished:
             # 从任务列表中移除
             self._serial.task_list.remove(self)
 
     def process(self,receipt):
+        # 进入处理函数不意味着本次任务的完成，只代表接收到了任务的回执但有可能还有更多回执没收到
         # 取消检查函数
         if self.fail_handler:
             self.fail_handler.cancel()
         result = self.parse(receipt)
-        if self.aim and self.writable():
-            self._serial.transport.loop.call_later(self.interval,self.serial_write)
+        if self.task_finished and self.writable():
+            self._serial.transport.loop.call_later(self.task_interval, self.serial_write)
         else:
-            self.finished = True
+            self.action_finished = True
         return result
 
     def produce(self, seq_num):
@@ -112,23 +116,23 @@ class Task:
 
     def fail(self):
         if self.writable():
-            i = self.interval - 1
+            i = self.task_interval - 1
             if i <= 0:
                 self.serial_write()
             else:
                 self._serial.transport.loop.call_later(i, self.serial_write)
         else:
             # 在任务和流水号映射中删除当前失败命令的流水号
-            self.finished = True
+            self.action_finished = True
             self._serial.task_list.remove(self)
             self.process_fail()
         # 在任务和流水号映射中删除当前失败命令的流水号
-        self._serial.task_seqnum_mapping.pop(self.cur_seq_num)
+        self._serial.task_seqnum_mapping.pop(self.cur_task_num)
 
     def process_fail(self):
         raise NotImplementedError
 
-class list_ports_task(Task):
+class list_ports_action(Action):
     def __init__(self, _serial,_socket,**kwargs):
         super().__init__(_serial,_socket,**kwargs)
         self.task_id = None
@@ -137,7 +141,7 @@ class list_ports_task(Task):
         return
 
     def parse(self,receipt):
-        self.aim = True
+        self.task_finished = True
         ports = [port for port in sorted(serial.tools.list_ports.comports())]
         if ports:
             datasheet = [("port\'s device", "port\'s description")]
@@ -152,7 +156,7 @@ class list_ports_task(Task):
         print("list_ports_task任务结束")
         return
 
-class list_nodes_task(Task):
+class list_nodes_action(Action):
     def __init__(self, _serial,_socket,**kwargs):
         super().__init__(_serial,_socket,**kwargs)
         self.task_id = 0xf0
@@ -171,7 +175,7 @@ class list_nodes_task(Task):
         return package + protocol.pack_check_num(package)
 
     def parse(self,receipt):
-        self.aim = True
+        self.task_finished = True
         # H:代表16位短地址，8B代表64位mac地址
         fmt = "H8B"
         # 该命令只有串口协议
@@ -207,7 +211,7 @@ class list_nodes_task(Task):
         return
 
 
-class temp_start_task(Task):
+class temp_start_action(Action):
     # todo：当没有节点时如何处理？
     def __init__(self, _serial, _socket, **kwargs):
         super().__init__(_serial, _socket, **kwargs)
@@ -238,7 +242,7 @@ class temp_start_task(Task):
         # 解包温度
         self.received_receipt_num += 1
         if self.received_receipt_num == self.expected_receipt_num:
-            self.aim = True
+            self.task_finished = True
         temperature = float(receipt.data)
         receipt.data = temperature
         return {'result':temperature}
@@ -247,30 +251,30 @@ class temp_start_task(Task):
         self._socket.notify_write({"result":"temp_start_task任务失败"})
         return
 
-class temp_stop_task(Task):
+class temp_stop_action(Action):
     def __init__(self, args=''):
         super().__init__()
 
-class temp_pause_task(Task):
+class temp_pause_action(Action):
     def __init__(self, args=''):
         super().__init__()
 
-class temp_resume_task(Task):
+class temp_resume_action(Action):
     def __init__(self, args=''):
         super().__init__()
 
-class led_clear_task(Task):
+class led_clear_action(Action):
     def __init__(self, args=''):
         super().__init__()
 
-class led_set_task(Task):
+class led_set_action(Action):
     def __init__(self, args=''):
         super().__init__()
 
-class led_get_task(Task):
+class led_get_action(Action):
     def __init__(self, args=''):
         super().__init__()
 
 if __name__ == "__main__":
-    print(isinstance(led_get_task(),led_get_task))
-    print(led_get_task,'\n',led_get_task())
+    print(isinstance(led_get_action(), led_get_action))
+    print(led_get_action, '\n', led_get_action())
