@@ -137,6 +137,7 @@ class SockOutput(asyncio.Protocol):
 
     def connection_made(self, transport):
         self.transport = transport
+        print('port opened', transport)
         server_info = self.transport.get_extra_info("sockname")
         peer_info = self.transport.get_extra_info("peername")
         self.peer_info = f'{peer_info[0]}:{peer_info[1]}'

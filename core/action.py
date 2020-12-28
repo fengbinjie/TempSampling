@@ -48,9 +48,6 @@ class Action:
             "data": None,
             "eof": True
         }
-        if kwargs:
-            for args, value in kwargs.items():
-                setattr(self,args,value)
 
     def start(self):
         self.serial_write()
@@ -215,6 +212,10 @@ class temp_start_action(Action):
     # todo：当没有节点时如何处理？
     def __init__(self, _serial, _socket, **kwargs):
         super().__init__(_serial, _socket, **kwargs)
+        self.task_times = None
+        if kwargs:
+            for args, value in kwargs.items():
+                setattr(self,args,value)
         self.times = None
         self.profile_id = 0x10
         self.data = b''
