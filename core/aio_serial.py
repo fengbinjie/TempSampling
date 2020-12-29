@@ -86,11 +86,8 @@ class Output(asyncio.Protocol):
                 task = self.task_seqnum_mapping.pop(receipt.seq_num, None)
                 # 找到相应的处理函数
                 if task:
-                    if self.sock_output:
-                        task.socket_write(receipt)
-                    else:
-                        result = task.process(receipt)
-                        print(result)
+                    task.socket_write(receipt)
+                    print(receipt)
 
 
     def writable(self):
@@ -174,15 +171,22 @@ class SockOutput(asyncio.Protocol):
         action = getattr(tasks, f'{request["action"]}_action', None)
         # 获取request任务的参数
         kwargs = request["data"]
-        if action:
-            # 解析参数
-            pass
-            # 替换或取消已存在的任务。暂定为取消
-            for existedAction in self.serial_output.task_list:
-                if isinstance(existedAction,action):
-                    self.notify_write("该任务正在运行")
-                    return
+        if not action:
+            print(f"无此action {request}") #todo 日志记录
+            return
+
+        # 解析参数
+        # 替换或取消已存在的任务。暂定为取消
+        for existedAction in self.serial_output.task_list:
+            if isinstance(existedAction,action):
+                self.notify_write("该任务正在运行")
+                return
+        try:
             new_action = action(self.serial_output,self,**kwargs)
+        except Exception as why:
+            print(why)
+        else:
+            print(action.__name__)
             self.serial_output.task_list.append(new_action)
             new_action.start()
 

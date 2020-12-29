@@ -320,8 +320,8 @@ class Controller(cmd.Cmd):
                     # 退出
                     self.logger.critical("服务器退出")
                     return True
-                print(response)
                 response = json.loads(response)
+                print(response["data"]["result"])
                 if response["eof"]:
                     return
                 else:

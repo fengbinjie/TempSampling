@@ -37,6 +37,7 @@ class Action:
         self.task_interval = 2  # task执行时间间隔
         self.fail_handler = None # 失败处理函数的handler
         self.action_id = None    # action的id
+        self.post_action = None
         self.cur_task_num = None  # 当前action所执行的任务对应的序列号
         self.task_finished = False # 本次task完成
         self.action_finished = False    # action完成标志（当所有任务都已完成时）
@@ -48,8 +49,25 @@ class Action:
             "data": None,
             "eof": True
         }
+        # 不存在节点且不是list_nodes_action 则执行一遍 list_nodes_action获得网关中的节点
+        # if not self.nodes and self.__class__ is not list_nodes_action:
+        #     x = list_nodes_action(_serial,_socket)
+        #     x.start()
+        #     # 此处需要等待list_nodes_action任务的完成
+        #     if x.action_finished and self.nodes:
+        #         pass
+        #     else:
+        #         raise Exception("因暂无节点初始化失败")
+
 
     def start(self):
+        # 当始终没有节点时，在此处循环
+        if not self.nodes:
+            pre_action = list_nodes_action(self._serial,self._socket)
+            pre_action.post_action = self
+            pre_action.start()
+            return
+        # 当确实存在节点时
         self.serial_write()
 
     def fill_response(self, data, eof=True):
@@ -85,12 +103,17 @@ class Action:
 
     def socket_write(self, receipt):
         result = self.process(receipt)
-        if self._socket:
-            self.fill_response(data=result, eof=self.action_finished)
+        if result and self._socket:
+            # 存在post_action即代表客户端还要接受post_action的回执信息，因此eof设定为False
+            finished = False if self.post_action else self.action_finished
+            self.fill_response(data=result, eof=finished)
             self._socket.notify_write(self.response)
-        if self.action_finished:
+        if self.action_finished and self in self._serial.task_list:
             # 从任务列表中移除
             self._serial.task_list.remove(self)
+        # 假如存在下一个action则启动下一个action
+        if self.post_action:
+            self.post_action.serial_write()
 
     def process(self,receipt):
         # 进入处理函数不意味着本次任务的完成，只代表接收到了任务的回执但有可能还有更多回执没收到
@@ -110,6 +133,9 @@ class Action:
 
     def parse(self,receipt):
         raise NotImplementedError
+
+    def init_fail(self, msg):
+        raise Exception(msg)
 
     def fail(self):
         if self.writable():
@@ -144,7 +170,7 @@ class list_ports_action(Action):
             datasheet = [("port\'s device", "port\'s description")]
             for port in ports:
                 datasheet.append((port.device, port.description))
-            return format_table(datasheet)
+            return {'result':format_table(datasheet)}
         else:
             return 'there is no port'
 
@@ -158,6 +184,10 @@ class list_nodes_action(Action):
         super().__init__(_serial,_socket,**kwargs)
         self.task_id = 0xf0
         self.data = b''
+    # 无论当前是否存在节点都要运行
+    def start(self):
+        self.serial_write()
+
 
     def produce(self, seq_num):
         short_addr = 0x0000
@@ -198,9 +228,9 @@ class list_nodes_action(Action):
             # 生成节点对象
             receipt.data = receipt_data
             self.nodes[nwk_addr] = Node(ext_addr)
-        # nodes = dict()
-        # for short_addr, mac_addr in self.nodes:
-        #     nodes[short_addr] = mac_addr
+        # 没有节点
+        if not self.nodes:
+            return {'result':'暂无节点'}
         return {'result':receipt_data}
 
     def process_fail(self):
@@ -223,6 +253,8 @@ class temp_start_action(Action):
         self.received_receipt_num = 0
 
     def produce(self,seq_num):
+        if not self.nodes:
+            self.init_fail("因暂无节点初始化失败")
         big_p = b''
         if self.nodes:
             for short_addr in self.nodes:
@@ -253,8 +285,36 @@ class temp_start_action(Action):
         return
 
 class temp_stop_action(Action):
-    def __init__(self, args=''):
-        super().__init__()
+    def __init__(self, _serial, _socket, **kwargs):
+        super().__init__(_serial, _socket, **kwargs)
+
+    def produce(self, seq_num):
+
+        pass
+
+    def parse(self,receipt):
+        # 找到温度采集任务的action变量
+        # 获取action
+        # action = getattr(tasks, f'{request["action"]}_action', None)
+        # # 获取request任务的参数
+        # kwargs = request["data"]
+        # if action:
+        #     # 解析参数
+        #     pass
+        #     # 替换或取消已存在的任务。暂定为取消
+        #     for existedAction in self._serial.task_list:
+        #         if isinstance(existedAction, action):
+        #             self.notify_write("该任务正在运行")
+        #             return
+        #     new_action = action(self.serial_output, self, **kwargs)
+        #     self.serial_output.task_list.append(new_action)
+        #     new_action.start()
+        # if self._serial.task_list
+        # 将其action_finished标志置位
+        pass
+
+    def process_fail(self):
+        pass
 
 class temp_pause_action(Action):
     def __init__(self, args=''):
